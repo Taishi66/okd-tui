@@ -13,14 +13,20 @@ type MockGateway struct {
 	Namespaces  []NamespaceInfo
 	LogContent  string
 
+	// Watch channels (inject from tests)
+	WatchPodsCh        chan WatchEvent
+	WatchDeploymentsCh chan WatchEvent
+
 	// Error injection
-	ListPodsErr        error
-	ListDeploymentsErr error
-	ListNamespacesErr  error
-	GetPodLogsErr      error
-	DeletePodErr       error
-	ScaleErr           error
-	ReconnectErr       error
+	ListPodsErr         error
+	ListDeploymentsErr  error
+	ListNamespacesErr   error
+	GetPodLogsErr       error
+	DeletePodErr        error
+	ScaleErr            error
+	ReconnectErr        error
+	WatchPodsErr        error
+	WatchDeploymentsErr error
 
 	// Call tracking
 	DeletedPod    string
@@ -40,6 +46,20 @@ func (m *MockGateway) SetNamespace(ns string) { m.NamespaceVal = ns }
 func (m *MockGateway) Reconnect() error {
 	m.ReconnectCalls++
 	return m.ReconnectErr
+}
+
+func (m *MockGateway) WatchPods(_ context.Context) (<-chan WatchEvent, error) {
+	if m.WatchPodsErr != nil {
+		return nil, m.WatchPodsErr
+	}
+	return m.WatchPodsCh, nil
+}
+
+func (m *MockGateway) WatchDeployments(_ context.Context) (<-chan WatchEvent, error) {
+	if m.WatchDeploymentsErr != nil {
+		return nil, m.WatchDeploymentsErr
+	}
+	return m.WatchDeploymentsCh, nil
 }
 
 func (m *MockGateway) ListPods(_ context.Context) ([]PodInfo, error) {

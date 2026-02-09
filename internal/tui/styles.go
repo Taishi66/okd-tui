@@ -79,6 +79,10 @@ var (
 				Bold(true).
 				PaddingLeft(2).
 				PaddingTop(1)
+
+	liveStyle = lipgloss.NewStyle().
+			Foreground(colorSuccess).
+			Bold(true)
 )
 
 func colorizeStatus(status string) string {

@@ -26,6 +26,40 @@ func (c *Client) ListPods(ctx context.Context) ([]domain.PodInfo, error) {
 	return pods, nil
 }
 
+func (c *Client) WatchPods(ctx context.Context) (<-chan domain.WatchEvent, error) {
+	watcher, err := c.clientset.CoreV1().Pods(c.namespace).Watch(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, classifyError(err, c.serverURL)
+	}
+	ch := make(chan domain.WatchEvent)
+	go func() {
+		defer close(ch)
+		defer watcher.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case event, ok := <-watcher.ResultChan():
+				if !ok {
+					return
+				}
+				pod, ok := event.Object.(*corev1.Pod)
+				if !ok {
+					continue
+				}
+				info := podToPodInfo(*pod)
+				wType := domain.WatchEventType(string(event.Type))
+				select {
+				case ch <- domain.WatchEvent{Type: wType, Resource: "pod", Pod: &info}:
+				case <-ctx.Done():
+					return
+				}
+			}
+		}
+	}()
+	return ch, nil
+}
+
 func (c *Client) GetPodLogs(ctx context.Context, podName string, tailLines int64, previous bool) (string, error) {
 	opts := &corev1.PodLogOptions{
 		TailLines: &tailLines,

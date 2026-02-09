@@ -28,3 +28,20 @@ type NamespaceInfo struct {
 	Status string
 	Age    string
 }
+
+// WatchEventType represents the type of a Kubernetes watch event.
+type WatchEventType string
+
+const (
+	EventAdded    WatchEventType = "ADDED"
+	EventModified WatchEventType = "MODIFIED"
+	EventDeleted  WatchEventType = "DELETED"
+)
+
+// WatchEvent carries a single watch event for the TUI to merge into its state.
+type WatchEvent struct {
+	Type       WatchEventType
+	Resource   string // "pod", "deployment"
+	Pod        *PodInfo
+	Deployment *DeploymentInfo
+}

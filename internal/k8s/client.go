@@ -21,7 +21,7 @@ import (
 // Client wraps the Kubernetes clientset and connection metadata.
 // It implements domain.KubeGateway.
 type Client struct {
-	clientset      *kubernetes.Clientset
+	clientset      kubernetes.Interface
 	config         *rest.Config
 	kubeconfigPath string
 	context        string

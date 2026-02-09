@@ -54,6 +54,8 @@ type deploymentsLoadedMsg struct{ items []domain.DeploymentInfo }
 type logsLoadedMsg struct{ content string }
 type actionDoneMsg struct{ message string }
 type apiErrMsg struct{ err error }
+type watchEventMsg struct{ event domain.WatchEvent }
+type watchStoppedMsg struct{ resource string }
 
 // --- Model ---
 
@@ -91,6 +93,11 @@ type Model struct {
 
 	// Connection state
 	disconnected bool
+
+	// Watch state
+	watchCancel context.CancelFunc
+	watching    bool
+	watchCh     <-chan domain.WatchEvent
 }
 
 func NewModel(client domain.KubeGateway, factory ClientFactory) Model {
@@ -154,14 +161,33 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.loading = false
 		m.cursor = 0
 		m.disconnected = false
-		return m, nil
+		cmd := m.startWatch()
+		return m, cmd
 
 	case deploymentsLoadedMsg:
 		m.deployments = msg.items
 		m.loading = false
 		m.cursor = 0
 		m.disconnected = false
+		cmd := m.startWatch()
+		return m, cmd
+
+	case watchEventMsg:
+		switch msg.event.Resource {
+		case "pod":
+			m.mergePodEvent(msg.event)
+		case "deployment":
+			m.mergeDeploymentEvent(msg.event)
+		}
+		if m.watchCh != nil {
+			return m, listenWatch(m.watchCh, msg.event.Resource)
+		}
 		return m, nil
+
+	case watchStoppedMsg:
+		m.watching = false
+		cmd := m.startWatch()
+		return m, cmd
 
 	case logsLoadedMsg:
 		m.logState.setContent(msg.content)
@@ -234,6 +260,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.logState = logState{}
 			return m, nil
 		}
+		m.stopWatch()
 		return m, tea.Quit
 
 	case key.Matches(msg, keys.Escape):
@@ -411,6 +438,7 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 	case ViewProjects:
 		items := m.filteredNamespaces()
 		if m.cursor < len(items) {
+			m.stopWatch()
 			m.client.SetNamespace(items[m.cursor].Name)
 			m.filter.SetValue("")
 			m.view = ViewPods
@@ -521,6 +549,7 @@ func (m Model) switchView(v View) (tea.Model, tea.Cmd) {
 		// from logs, go back first
 		m.logState = logState{}
 	}
+	m.stopWatch()
 	m.view = v
 	m.cursor = 0
 	m.filter.SetValue("")
@@ -608,6 +637,119 @@ func (m Model) loadCurrentView() tea.Cmd {
 		}
 	}
 	return nil
+}
+
+// --- Watch lifecycle ---
+
+func (m *Model) stopWatch() {
+	if m.watchCancel != nil {
+		m.watchCancel()
+		m.watchCancel = nil
+	}
+	m.watching = false
+	m.watchCh = nil
+}
+
+func (m *Model) startWatch() tea.Cmd {
+	m.stopWatch()
+
+	if m.client == nil {
+		return nil
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	m.watchCancel = cancel
+
+	var ch <-chan domain.WatchEvent
+	var err error
+	var resource string
+
+	switch m.view {
+	case ViewPods:
+		ch, err = m.client.WatchPods(ctx)
+		resource = "pod"
+	case ViewDeployments:
+		ch, err = m.client.WatchDeployments(ctx)
+		resource = "deployment"
+	default:
+		cancel()
+		return nil
+	}
+
+	if err != nil || ch == nil {
+		cancel()
+		return nil
+	}
+
+	m.watching = true
+	m.watchCh = ch
+	return listenWatch(ch, resource)
+}
+
+func listenWatch(ch <-chan domain.WatchEvent, resource string) tea.Cmd {
+	return func() tea.Msg {
+		evt, ok := <-ch
+		if !ok {
+			return watchStoppedMsg{resource: resource}
+		}
+		return watchEventMsg{event: evt}
+	}
+}
+
+// --- Watch merge ---
+
+func (m *Model) mergePodEvent(evt domain.WatchEvent) {
+	if evt.Pod == nil {
+		return
+	}
+	switch evt.Type {
+	case domain.EventAdded:
+		m.pods = append(m.pods, *evt.Pod)
+	case domain.EventModified:
+		for i, p := range m.pods {
+			if p.Name == evt.Pod.Name {
+				m.pods[i] = *evt.Pod
+				break
+			}
+		}
+	case domain.EventDeleted:
+		for i, p := range m.pods {
+			if p.Name == evt.Pod.Name {
+				m.pods = append(m.pods[:i], m.pods[i+1:]...)
+				if m.cursor > 0 && m.cursor >= len(m.pods) {
+					m.cursor--
+				}
+				break
+			}
+		}
+	}
+}
+
+func (m *Model) mergeDeploymentEvent(evt domain.WatchEvent) {
+	if evt.Deployment == nil {
+		return
+	}
+	switch evt.Type {
+	case domain.EventAdded:
+		m.deployments = append(m.deployments, *evt.Deployment)
+	case domain.EventModified:
+		for i, d := range m.deployments {
+			if d.Name == evt.Deployment.Name {
+				m.deployments[i] = *evt.Deployment
+				break
+			}
+		}
+	case domain.EventDeleted:
+		for i, d := range m.deployments {
+			if d.Name == evt.Deployment.Name {
+				m.deployments = append(m.deployments[:i], m.deployments[i+1:]...)
+				if m.cursor > 0 && m.cursor >= len(m.deployments) {
+					m.cursor--
+				}
+				break
+			}
+		}
+	}
 }
 
 // --- Filtering ---
@@ -813,7 +955,11 @@ func (m Model) renderStatusBar() string {
 		nsInfo = m.client.GetNamespace()
 	}
 
-	left := fmt.Sprintf(" %s | %s | %d items", m.view.String(), nsInfo, m.listLen())
+	liveIndicator := ""
+	if m.watching {
+		liveIndicator = liveStyle.Render(" ● LIVE")
+	}
+	left := fmt.Sprintf(" %s | %s | %d items%s", m.view.String(), nsInfo, m.listLen(), liveIndicator)
 	bar := statusBarStyle.Width(m.width).Render(left + "  " + helpText)
 	return bar
 }

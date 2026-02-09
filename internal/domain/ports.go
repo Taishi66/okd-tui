@@ -14,6 +14,7 @@ type ClusterInfo interface {
 // PodRepository provides access to pod operations.
 type PodRepository interface {
 	ListPods(ctx context.Context) ([]PodInfo, error)
+	WatchPods(ctx context.Context) (<-chan WatchEvent, error)
 	GetPodLogs(ctx context.Context, podName string, tailLines int64, previous bool) (string, error)
 	DeletePod(ctx context.Context, podName string) error
 }
@@ -21,6 +22,7 @@ type PodRepository interface {
 // DeploymentRepository provides access to deployment operations.
 type DeploymentRepository interface {
 	ListDeployments(ctx context.Context) ([]DeploymentInfo, error)
+	WatchDeployments(ctx context.Context) (<-chan WatchEvent, error)
 	ScaleDeployment(ctx context.Context, name string, replicas int32) error
 }
 
