@@ -1,0 +1,855 @@
+package tui
+
+import (
+	"context"
+	"encoding/base64"
+	"errors"
+	"fmt"
+	"strconv"
+	"strings"
+
+	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/textinput"
+	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/jclamy/okd-tui/internal/config"
+	"github.com/jclamy/okd-tui/internal/domain"
+)
+
+// ClientFactory creates a new KubeGateway (used for reconnection from error screen).
+type ClientFactory func() (domain.KubeGateway, error)
+
+// --- Views ---
+
+type View int
+
+const (
+	ViewProjects    View = iota
+	ViewPods
+	ViewDeployments
+	ViewLogs
+	ViewError // startup error screen
+)
+
+func (v View) String() string {
+	switch v {
+	case ViewProjects:
+		return "PROJECTS"
+	case ViewPods:
+		return "PODS"
+	case ViewDeployments:
+		return "DEPLOYS"
+	case ViewLogs:
+		return "LOGS"
+	default:
+		return ""
+	}
+}
+
+// --- Messages ---
+
+type namespacesLoadedMsg struct{ items []domain.NamespaceInfo }
+type podsLoadedMsg struct{ items []domain.PodInfo }
+type deploymentsLoadedMsg struct{ items []domain.DeploymentInfo }
+type logsLoadedMsg struct{ content string }
+type actionDoneMsg struct{ message string }
+type apiErrMsg struct{ err error }
+
+// --- Model ---
+
+type Model struct {
+	client        domain.KubeGateway
+	clientFactory ClientFactory
+
+	// Views
+	view     View
+	prevView View
+
+	// Data
+	namespaces  []domain.NamespaceInfo
+	pods        []domain.PodInfo
+	deployments []domain.DeploymentInfo
+	logState    logState
+
+	// UI state
+	cursor    int
+	width     int
+	height    int
+	loading   bool
+	toast     toast
+	confirm   confirmState
+	startupErr error // non-nil if launched with NewModelWithError
+
+	// Filter
+	filter    textinput.Model
+	filtering bool
+
+	// Scale input
+	scaleInput    textinput.Model
+	scalingDep    string
+	scaleActive   bool
+
+	// Connection state
+	disconnected bool
+}
+
+func NewModel(client domain.KubeGateway, factory ClientFactory) Model {
+	fi := textinput.New()
+	fi.Placeholder = "filtre..."
+	fi.CharLimit = 64
+	fi.Width = 30
+
+	si := textinput.New()
+	si.Placeholder = "nombre de replicas"
+	si.CharLimit = 4
+	si.Width = 20
+
+	return Model{
+		client:        client,
+		clientFactory: factory,
+		view:          ViewPods,
+		filter:        fi,
+		scaleInput:    si,
+		confirm:       newConfirmState(),
+	}
+}
+
+func NewModelWithError(err error, factory ClientFactory) Model {
+	return Model{
+		view:          ViewError,
+		startupErr:    err,
+		clientFactory: factory,
+		confirm:       newConfirmState(),
+	}
+}
+
+func (m Model) Init() tea.Cmd {
+	if m.view == ViewError {
+		return nil
+	}
+	return m.loadCurrentView()
+}
+
+// --- Update ---
+
+func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		return m, nil
+
+	case tea.KeyMsg:
+		return m.handleKey(msg)
+
+	case namespacesLoadedMsg:
+		m.namespaces = msg.items
+		m.loading = false
+		m.cursor = 0
+		m.disconnected = false
+		return m, nil
+
+	case podsLoadedMsg:
+		m.pods = msg.items
+		m.loading = false
+		m.cursor = 0
+		m.disconnected = false
+		return m, nil
+
+	case deploymentsLoadedMsg:
+		m.deployments = msg.items
+		m.loading = false
+		m.cursor = 0
+		m.disconnected = false
+		return m, nil
+
+	case logsLoadedMsg:
+		m.logState.setContent(msg.content)
+		m.loading = false
+		return m, nil
+
+	case actionDoneMsg:
+		m.toast = newToast(msg.message, toastSuccess)
+		m.loading = false
+		return m, tea.Batch(scheduleToastClear(), m.loadCurrentView())
+
+	case apiErrMsg:
+		return m.handleAPIError(msg.err)
+
+	case toastExpiredMsg:
+		m.toast = toast{}
+		return m, nil
+	}
+
+	return m, nil
+}
+
+func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Startup error screen: only q/r
+	if m.view == ViewError {
+		switch msg.String() {
+		case "q", "ctrl+c":
+			return m, tea.Quit
+		case "r":
+			if m.clientFactory == nil {
+				return m, nil
+			}
+			newClient, err := m.clientFactory()
+			if err != nil {
+				m.startupErr = err
+				return m, nil
+			}
+			m.client = newClient
+			m.startupErr = nil
+			m.view = ViewPods
+			return m, m.loadCurrentView()
+		}
+		return m, nil
+	}
+
+	// Confirm dialog captures all input
+	if m.confirm.isActive() {
+		cmd, handled := m.confirm.update(msg)
+		if handled {
+			return m, cmd
+		}
+		return m, nil
+	}
+
+	// Scale input captures all input
+	if m.scaleActive {
+		return m.handleScaleInput(msg)
+	}
+
+	// Filter mode
+	if m.filtering {
+		return m.handleFilterInput(msg)
+	}
+
+	// Global keys
+	switch {
+	case key.Matches(msg, keys.Quit):
+		if m.view == ViewLogs {
+			m.view = m.prevView
+			m.logState = logState{}
+			return m, nil
+		}
+		return m, tea.Quit
+
+	case key.Matches(msg, keys.Escape):
+		if m.view == ViewLogs {
+			m.view = m.prevView
+			m.logState = logState{}
+			return m, nil
+		}
+		m.toast = toast{}
+		return m, nil
+
+	// Tab switching
+	case key.Matches(msg, keys.Tab1):
+		return m.switchView(ViewProjects)
+	case key.Matches(msg, keys.Tab2):
+		return m.switchView(ViewPods)
+	case key.Matches(msg, keys.Tab3):
+		return m.switchView(ViewDeployments)
+	case key.Matches(msg, keys.TabNext):
+		next := (m.view + 1) % 3 // cycle through Projects/Pods/Deployments
+		return m.switchView(View(next))
+
+	// Filter
+	case key.Matches(msg, keys.Filter):
+		if m.view != ViewLogs {
+			m.filtering = true
+			m.filter.SetValue("")
+			m.filter.Focus()
+			return m, textinput.Blink
+		}
+
+	// Refresh
+	case key.Matches(msg, keys.Refresh):
+		if m.disconnected && m.client != nil {
+			_ = m.client.Reconnect()
+			m.disconnected = false
+		}
+		m.loading = true
+		return m, m.loadCurrentView()
+
+	// Navigation
+	case key.Matches(msg, keys.Down):
+		maxIdx := m.listLen() - 1
+		if maxIdx < 0 {
+			maxIdx = 0
+		}
+		m.cursor = min(m.cursor+1, maxIdx)
+	case key.Matches(msg, keys.Up):
+		m.cursor = max(m.cursor-1, 0)
+	case key.Matches(msg, keys.Top):
+		m.cursor = 0
+	case key.Matches(msg, keys.Bottom):
+		m.cursor = max(m.listLen()-1, 0)
+	case key.Matches(msg, keys.PageDown):
+		if m.view == ViewLogs {
+			m.logState.scrollDown(20, m.contentHeight())
+		} else {
+			m.cursor = min(m.cursor+20, max(m.listLen()-1, 0))
+		}
+	case key.Matches(msg, keys.PageUp):
+		if m.view == ViewLogs {
+			m.logState.scrollUp(20)
+		} else {
+			m.cursor = max(m.cursor-20, 0)
+		}
+
+	// Enter
+	case key.Matches(msg, keys.Enter):
+		return m.handleEnter()
+
+	// Actions
+	case key.Matches(msg, keys.Delete):
+		if m.view == ViewPods {
+			return m.handleDeletePod()
+		}
+	case key.Matches(msg, keys.ScaleUp):
+		if m.view == ViewDeployments {
+			return m.handleScaleDelta(1)
+		}
+	case key.Matches(msg, keys.ScaleDn):
+		if m.view == ViewDeployments {
+			return m.handleScaleDelta(-1)
+		}
+	case key.Matches(msg, keys.ScaleSet):
+		if m.view == ViewDeployments {
+			return m.activateScaleInput()
+		}
+	case key.Matches(msg, keys.Previous):
+		if m.view == ViewLogs {
+			return m.togglePreviousLogs()
+		}
+	case key.Matches(msg, keys.Copy):
+		if m.view == ViewPods {
+			return m.copyPodName()
+		}
+	}
+
+	return m, nil
+}
+
+// --- Key Handlers ---
+
+func (m Model) handleFilterInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "enter", "esc":
+		m.filtering = false
+		m.filter.Blur()
+		if msg.String() == "esc" {
+			m.filter.SetValue("")
+		}
+		m.cursor = 0
+		return m, nil
+	default:
+		var cmd tea.Cmd
+		m.filter, cmd = m.filter.Update(msg)
+		m.cursor = 0
+		return m, cmd
+	}
+}
+
+func (m Model) handleScaleInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.scaleActive = false
+		m.scaleInput.Blur()
+		m.scaleInput.SetValue("")
+		return m, nil
+	case "enter":
+		val := strings.TrimSpace(m.scaleInput.Value())
+		replicas, err := strconv.Atoi(val)
+		if err != nil || replicas < 0 {
+			m.toast = newToast("Nombre invalide", toastError)
+			m.scaleActive = false
+			m.scaleInput.Blur()
+			return m, scheduleToastClear()
+		}
+		m.scaleActive = false
+		m.scaleInput.Blur()
+		depName := m.scalingDep
+		r := int32(replicas)
+
+		if r > 10 {
+			isProd := config.IsProdNamespace(m.client.GetNamespace(), nil)
+			m.confirm.activate(
+				fmt.Sprintf("Scale %s à %d replicas", depName, r),
+				depName, m.client.GetNamespace(), isProd,
+				func() tea.Msg {
+					err := m.client.ScaleDeployment(context.Background(), depName, r)
+					if err != nil {
+						return apiErrMsg{err}
+					}
+					return actionDoneMsg{fmt.Sprintf("Scaled %s à %d", depName, r)}
+				},
+			)
+			return m, nil
+		}
+
+		m.loading = true
+		return m, func() tea.Msg {
+			err := m.client.ScaleDeployment(context.Background(), depName, r)
+			if err != nil {
+				return apiErrMsg{err}
+			}
+			return actionDoneMsg{fmt.Sprintf("Scaled %s à %d", depName, r)}
+		}
+	default:
+		var cmd tea.Cmd
+		m.scaleInput, cmd = m.scaleInput.Update(msg)
+		return m, cmd
+	}
+}
+
+func (m Model) handleEnter() (tea.Model, tea.Cmd) {
+	switch m.view {
+	case ViewProjects:
+		items := m.filteredNamespaces()
+		if m.cursor < len(items) {
+			m.client.SetNamespace(items[m.cursor].Name)
+			m.filter.SetValue("")
+			m.view = ViewPods
+			m.loading = true
+			return m, m.loadCurrentView()
+		}
+	case ViewPods:
+		items := m.filteredPods()
+		if m.cursor < len(items) {
+			podName := items[m.cursor].Name
+			m.prevView = m.view
+			m.view = ViewLogs
+			m.loading = true
+			m.logState = logState{podName: podName}
+			return m, func() tea.Msg {
+				content, err := m.client.GetPodLogs(context.Background(), podName, 200, false)
+				if err != nil {
+					return apiErrMsg{err}
+				}
+				return logsLoadedMsg{content}
+			}
+		}
+	}
+	return m, nil
+}
+
+func (m Model) handleDeletePod() (tea.Model, tea.Cmd) {
+	items := m.filteredPods()
+	if m.cursor >= len(items) {
+		return m, nil
+	}
+	podName := items[m.cursor].Name
+	isProd := config.IsProdNamespace(m.client.GetNamespace(), nil)
+
+	m.confirm.activate("Supprimer pod", podName, m.client.GetNamespace(), isProd, func() tea.Msg {
+		err := m.client.DeletePod(context.Background(), podName)
+		if err != nil {
+			return apiErrMsg{err}
+		}
+		return actionDoneMsg{fmt.Sprintf("Pod '%s' supprimé", podName)}
+	})
+	return m, nil
+}
+
+func (m Model) handleScaleDelta(delta int32) (tea.Model, tea.Cmd) {
+	items := m.filteredDeployments()
+	if m.cursor >= len(items) {
+		return m, nil
+	}
+	dep := items[m.cursor]
+	newReplicas := dep.Replicas + delta
+	if newReplicas < 0 {
+		newReplicas = 0
+	}
+	depName := dep.Name
+	m.loading = true
+	return m, func() tea.Msg {
+		err := m.client.ScaleDeployment(context.Background(), depName, newReplicas)
+		if err != nil {
+			return apiErrMsg{err}
+		}
+		return actionDoneMsg{fmt.Sprintf("Scaled %s à %d", depName, newReplicas)}
+	}
+}
+
+func (m Model) activateScaleInput() (tea.Model, tea.Cmd) {
+	items := m.filteredDeployments()
+	if m.cursor >= len(items) {
+		return m, nil
+	}
+	m.scalingDep = items[m.cursor].Name
+	m.scaleActive = true
+	m.scaleInput.SetValue("")
+	m.scaleInput.Focus()
+	return m, textinput.Blink
+}
+
+func (m Model) togglePreviousLogs() (tea.Model, tea.Cmd) {
+	newPrevious := !m.logState.previous
+	podName := m.logState.podName
+	m.loading = true
+	m.logState.previous = newPrevious
+	return m, func() tea.Msg {
+		content, err := m.client.GetPodLogs(context.Background(), podName, 200, newPrevious)
+		if err != nil {
+			return apiErrMsg{err}
+		}
+		return logsLoadedMsg{content}
+	}
+}
+
+func (m Model) copyPodName() (tea.Model, tea.Cmd) {
+	items := m.filteredPods()
+	if m.cursor >= len(items) {
+		return m, nil
+	}
+	// Copy to clipboard via OSC52 escape sequence (works in most modern terminals)
+	podName := items[m.cursor].Name
+	m.toast = newToast(fmt.Sprintf("Copié: %s", podName), toastSuccess)
+	return m, tea.Batch(
+		scheduleToastClear(),
+		tea.Printf("\033]52;c;%s\a", encodeBase64(podName)),
+	)
+}
+
+func (m Model) switchView(v View) (tea.Model, tea.Cmd) {
+	if m.view == ViewLogs {
+		// from logs, go back first
+		m.logState = logState{}
+	}
+	m.view = v
+	m.cursor = 0
+	m.filter.SetValue("")
+	m.loading = true
+	return m, m.loadCurrentView()
+}
+
+// --- Error handling ---
+
+func (m Model) handleAPIError(err error) (tea.Model, tea.Cmd) {
+	var apiErr *domain.APIError
+	if !errors.As(err, &apiErr) {
+		m.toast = newToast(err.Error(), toastError)
+		m.loading = false
+		return m, scheduleToastClear()
+	}
+
+	switch apiErr.Type {
+	case domain.ErrTokenExpired:
+		m.disconnected = true
+		m.toast = newToast(apiErr.Message, toastError)
+		m.loading = false
+		return m, nil // no auto-clear, keep visible
+
+	case domain.ErrUnreachable:
+		m.disconnected = true
+		m.toast = newToast("Connexion perdue - données en cache. 'r' pour reconnecter", toastError)
+		m.loading = false
+		return m, nil
+
+	case domain.ErrForbidden:
+		m.toast = newToast(fmt.Sprintf("Accès refusé au namespace '%s'", m.client.GetNamespace()), toastError)
+		m.loading = false
+		return m, scheduleToastClear()
+
+	case domain.ErrNotFound:
+		m.toast = newToast(apiErr.Message, toastError)
+		m.loading = false
+		return m, tea.Batch(scheduleToastClear(), m.loadCurrentView())
+
+	case domain.ErrConflict:
+		m.toast = newToast("Conflit : la ressource a été modifiée. Réessayez.", toastError)
+		m.loading = false
+		return m, scheduleToastClear()
+
+	case domain.ErrRateLimited:
+		m.toast = newToast("Trop de requêtes. Pause 2s...", toastError)
+		m.loading = false
+		return m, scheduleToastClear()
+
+	default:
+		m.toast = newToast(apiErr.Message, toastError)
+		m.loading = false
+		return m, scheduleToastClear()
+	}
+}
+
+// --- Data loading ---
+
+func (m Model) loadCurrentView() tea.Cmd {
+	switch m.view {
+	case ViewProjects:
+		return func() tea.Msg {
+			items, err := m.client.ListNamespaces(context.Background())
+			if err != nil {
+				return apiErrMsg{err}
+			}
+			return namespacesLoadedMsg{items}
+		}
+	case ViewPods:
+		return func() tea.Msg {
+			items, err := m.client.ListPods(context.Background())
+			if err != nil {
+				return apiErrMsg{err}
+			}
+			return podsLoadedMsg{items}
+		}
+	case ViewDeployments:
+		return func() tea.Msg {
+			items, err := m.client.ListDeployments(context.Background())
+			if err != nil {
+				return apiErrMsg{err}
+			}
+			return deploymentsLoadedMsg{items}
+		}
+	}
+	return nil
+}
+
+// --- Filtering ---
+
+func (m Model) filterText() string {
+	return strings.ToLower(m.filter.Value())
+}
+
+func (m Model) filteredNamespaces() []domain.NamespaceInfo {
+	f := m.filterText()
+	if f == "" {
+		return m.namespaces
+	}
+	var result []domain.NamespaceInfo
+	for _, ns := range m.namespaces {
+		if strings.Contains(strings.ToLower(ns.Name), f) {
+			result = append(result, ns)
+		}
+	}
+	return result
+}
+
+func (m Model) filteredPods() []domain.PodInfo {
+	f := m.filterText()
+	if f == "" {
+		return m.pods
+	}
+	var result []domain.PodInfo
+	for _, p := range m.pods {
+		if strings.Contains(strings.ToLower(p.Name), f) ||
+			strings.Contains(strings.ToLower(p.Status), f) {
+			result = append(result, p)
+		}
+	}
+	return result
+}
+
+func (m Model) filteredDeployments() []domain.DeploymentInfo {
+	f := m.filterText()
+	if f == "" {
+		return m.deployments
+	}
+	var result []domain.DeploymentInfo
+	for _, d := range m.deployments {
+		if strings.Contains(strings.ToLower(d.Name), f) {
+			result = append(result, d)
+		}
+	}
+	return result
+}
+
+func (m Model) listLen() int {
+	switch m.view {
+	case ViewProjects:
+		return len(m.filteredNamespaces())
+	case ViewPods:
+		return len(m.filteredPods())
+	case ViewDeployments:
+		return len(m.filteredDeployments())
+	default:
+		return 0
+	}
+}
+
+func (m Model) contentHeight() int {
+	// header(1) + tabs(1) + blank(1) + col_header(1) + status_bar(1) = 5 lines overhead
+	ch := m.height - 6
+	if ch < 1 {
+		return 1
+	}
+	return ch
+}
+
+// --- View ---
+
+func (m Model) View() string {
+	if m.width == 0 {
+		return "Chargement..."
+	}
+
+	// Startup error screen
+	if m.view == ViewError {
+		return m.renderErrorScreen()
+	}
+
+	var b strings.Builder
+
+	// Context bar
+	b.WriteString(m.renderContextBar())
+	b.WriteString("\n")
+
+	// Tabs
+	b.WriteString(m.renderTabs())
+	b.WriteString("\n")
+
+	// Disconnected banner
+	if m.disconnected {
+		banner := bannerWarnStyle.Width(m.width).Render("Connexion perdue - données en cache. Appuyez sur 'r' pour reconnecter")
+		b.WriteString(banner)
+		b.WriteString("\n")
+	}
+
+	// Confirm dialog
+	if m.confirm.isActive() {
+		b.WriteString(m.confirm.view(m.width))
+	} else if m.scaleActive {
+		b.WriteString(fmt.Sprintf("\n  Scale %s - Replicas: %s\n", m.scalingDep, m.scaleInput.View()))
+	} else if m.loading {
+		b.WriteString("\n  Chargement...\n")
+	} else {
+		// Content
+		b.WriteString(m.renderContent())
+	}
+
+	// Filter bar
+	if m.filtering {
+		b.WriteString(fmt.Sprintf("  /%s", m.filter.View()))
+		b.WriteString("\n")
+	}
+
+	// Fill remaining space
+	lines := strings.Count(b.String(), "\n")
+	for i := lines; i < m.height-2; i++ {
+		b.WriteString("\n")
+	}
+
+	// Toast
+	if m.toast.isActive() {
+		b.WriteString(m.toast.render())
+		b.WriteString("\n")
+	}
+
+	// Status bar
+	b.WriteString(m.renderStatusBar())
+
+	return b.String()
+}
+
+func (m Model) renderContextBar() string {
+	title := titleStyle.Render("OKD TUI")
+	if m.client == nil {
+		return title
+	}
+	ctx := contextStyle.Render(m.client.GetContext())
+	ns := namespaceStyle.Render(m.client.GetNamespace())
+	return fmt.Sprintf(" %s  ctx:%s  ns:%s", title, ctx, ns)
+}
+
+func (m Model) renderTabs() string {
+	tabs := []struct {
+		view  View
+		key   string
+		label string
+	}{
+		{ViewProjects, "1", "Projects"},
+		{ViewPods, "2", "Pods"},
+		{ViewDeployments, "3", "Deploys"},
+	}
+
+	var parts []string
+	for _, t := range tabs {
+		label := fmt.Sprintf("[%s] %s", t.key, t.label)
+		if m.view == t.view || (m.view == ViewLogs && m.prevView == t.view) {
+			parts = append(parts, tabActiveStyle.Render(label))
+		} else {
+			parts = append(parts, tabInactiveStyle.Render(label))
+		}
+	}
+	return "  " + strings.Join(parts, "  ")
+}
+
+func (m Model) renderContent() string {
+	ch := m.contentHeight()
+	switch m.view {
+	case ViewProjects:
+		return renderProjectList(m.filteredNamespaces(), m.cursor, m.width, ch, m.client.GetNamespace())
+	case ViewPods:
+		return renderPodList(m.filteredPods(), m.cursor, m.width, ch)
+	case ViewDeployments:
+		return renderDeploymentList(m.filteredDeployments(), m.cursor, m.width, ch)
+	case ViewLogs:
+		return renderLogs(&m.logState, m.width, ch)
+	default:
+		return ""
+	}
+}
+
+func (m Model) renderStatusBar() string {
+	var helpText string
+	switch m.view {
+	case ViewProjects:
+		helpText = projectHelpKeys()
+	case ViewPods:
+		helpText = podHelpKeys()
+	case ViewDeployments:
+		helpText = deploymentHelpKeys()
+	case ViewLogs:
+		helpText = logHelpKeys(m.logState.previous)
+	}
+
+	nsInfo := ""
+	if m.client != nil {
+		nsInfo = m.client.GetNamespace()
+	}
+
+	left := fmt.Sprintf(" %s | %s | %d items", m.view.String(), nsInfo, m.listLen())
+	bar := statusBarStyle.Width(m.width).Render(left + "  " + helpText)
+	return bar
+}
+
+func (m Model) renderErrorScreen() string {
+	var b strings.Builder
+	b.WriteString("\n")
+	b.WriteString(errorScreenStyle.Render("OKD TUI - Erreur de connexion"))
+	b.WriteString("\n\n")
+	b.WriteString(fmt.Sprintf("  %s\n", m.startupErr.Error()))
+	b.WriteString("\n")
+	b.WriteString("  [r] Réessayer  [q] Quitter\n")
+
+	lines := strings.Count(b.String(), "\n")
+	for i := lines; i < m.height; i++ {
+		b.WriteString("\n")
+	}
+	return b.String()
+}
+
+// --- Helpers ---
+
+func truncate(s string, maxLen int) string {
+	if maxLen <= 0 {
+		return ""
+	}
+	runes := []rune(s)
+	if len(runes) <= maxLen {
+		return s
+	}
+	if maxLen == 1 {
+		return string(runes[:1])
+	}
+	return string(runes[:maxLen-1]) + "…"
+}
+
+func encodeBase64(s string) string {
+	return base64.StdEncoding.EncodeToString([]byte(s))
+}
