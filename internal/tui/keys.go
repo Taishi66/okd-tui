@@ -23,6 +23,7 @@ type keyMap struct {
 	Tab1     key.Binding
 	Tab2     key.Binding
 	Tab3     key.Binding
+	Tab4     key.Binding
 	TabNext  key.Binding
 	Quit     key.Binding
 }
@@ -48,6 +49,7 @@ var keys = keyMap{
 	Tab1:     key.NewBinding(key.WithKeys("1"), key.WithHelp("1", "projects")),
 	Tab2:     key.NewBinding(key.WithKeys("2"), key.WithHelp("2", "pods")),
 	Tab3:     key.NewBinding(key.WithKeys("3"), key.WithHelp("3", "deploys")),
+	Tab4:     key.NewBinding(key.WithKeys("4"), key.WithHelp("4", "events")),
 	TabNext:  key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "vue suivante")),
 	Quit:     key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quitter")),
 }

@@ -27,6 +27,7 @@ const (
 	ViewProjects    View = iota
 	ViewPods
 	ViewDeployments
+	ViewEvents
 	ViewLogs
 	ViewError // startup error screen
 )
@@ -39,6 +40,8 @@ func (v View) String() string {
 		return "PODS"
 	case ViewDeployments:
 		return "DEPLOYS"
+	case ViewEvents:
+		return "EVENTS"
 	case ViewLogs:
 		return "LOGS"
 	default:
@@ -51,6 +54,7 @@ func (v View) String() string {
 type namespacesLoadedMsg struct{ items []domain.NamespaceInfo }
 type podsLoadedMsg struct{ items []domain.PodInfo }
 type deploymentsLoadedMsg struct{ items []domain.DeploymentInfo }
+type eventsLoadedMsg struct{ items []domain.EventInfo }
 type logsLoadedMsg struct{ content string }
 type actionDoneMsg struct{ message string }
 type apiErrMsg struct{ err error }
@@ -71,6 +75,7 @@ type Model struct {
 	namespaces  []domain.NamespaceInfo
 	pods        []domain.PodInfo
 	deployments []domain.DeploymentInfo
+	events      []domain.EventInfo
 	logState    logState
 
 	// UI state
@@ -172,12 +177,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmd := m.startWatch()
 		return m, cmd
 
+	case eventsLoadedMsg:
+		m.events = msg.items
+		m.loading = false
+		m.cursor = 0
+		m.disconnected = false
+		cmd := m.startWatch()
+		return m, cmd
+
 	case watchEventMsg:
 		switch msg.event.Resource {
 		case "pod":
 			m.mergePodEvent(msg.event)
 		case "deployment":
 			m.mergeDeploymentEvent(msg.event)
+		case "event":
+			m.mergeEventEvent(msg.event)
 		}
 		if m.watchCh != nil {
 			return m, listenWatch(m.watchCh, msg.event.Resource)
@@ -279,8 +294,10 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.switchView(ViewPods)
 	case key.Matches(msg, keys.Tab3):
 		return m.switchView(ViewDeployments)
+	case key.Matches(msg, keys.Tab4):
+		return m.switchView(ViewEvents)
 	case key.Matches(msg, keys.TabNext):
-		next := (m.view + 1) % 3 // cycle through Projects/Pods/Deployments
+		next := (m.view + 1) % 4 // cycle through Projects/Pods/Deployments/Events
 		return m.switchView(View(next))
 
 	// Filter
@@ -635,6 +652,14 @@ func (m Model) loadCurrentView() tea.Cmd {
 			}
 			return deploymentsLoadedMsg{items}
 		}
+	case ViewEvents:
+		return func() tea.Msg {
+			items, err := m.client.ListEvents(context.Background())
+			if err != nil {
+				return apiErrMsg{err}
+			}
+			return eventsLoadedMsg{items}
+		}
 	}
 	return nil
 }
@@ -671,6 +696,9 @@ func (m *Model) startWatch() tea.Cmd {
 	case ViewDeployments:
 		ch, err = m.client.WatchDeployments(ctx)
 		resource = "deployment"
+	case ViewEvents:
+		ch, err = m.client.WatchEvents(ctx)
+		resource = "event"
 	default:
 		cancel()
 		return nil
@@ -752,6 +780,33 @@ func (m *Model) mergeDeploymentEvent(evt domain.WatchEvent) {
 	}
 }
 
+func (m *Model) mergeEventEvent(evt domain.WatchEvent) {
+	if evt.Event == nil {
+		return
+	}
+	switch evt.Type {
+	case domain.EventAdded:
+		m.events = append(m.events, *evt.Event)
+	case domain.EventModified:
+		for i, e := range m.events {
+			if e.Reason == evt.Event.Reason && e.Object == evt.Event.Object {
+				m.events[i] = *evt.Event
+				break
+			}
+		}
+	case domain.EventDeleted:
+		for i, e := range m.events {
+			if e.Reason == evt.Event.Reason && e.Object == evt.Event.Object {
+				m.events = append(m.events[:i], m.events[i+1:]...)
+				if m.cursor > 0 && m.cursor >= len(m.events) {
+					m.cursor--
+				}
+				break
+			}
+		}
+	}
+}
+
 // --- Filtering ---
 
 func (m Model) filterText() string {
@@ -801,6 +856,21 @@ func (m Model) filteredDeployments() []domain.DeploymentInfo {
 	return result
 }
 
+func (m Model) filteredEvents() []domain.EventInfo {
+	f := m.filterText()
+	if f == "" {
+		return m.events
+	}
+	var result []domain.EventInfo
+	for _, e := range m.events {
+		if strings.Contains(strings.ToLower(e.Reason), f) ||
+			strings.Contains(strings.ToLower(e.Message), f) {
+			result = append(result, e)
+		}
+	}
+	return result
+}
+
 func (m Model) listLen() int {
 	switch m.view {
 	case ViewProjects:
@@ -809,6 +879,8 @@ func (m Model) listLen() int {
 		return len(m.filteredPods())
 	case ViewDeployments:
 		return len(m.filteredDeployments())
+	case ViewEvents:
+		return len(m.filteredEvents())
 	default:
 		return 0
 	}
@@ -907,6 +979,7 @@ func (m Model) renderTabs() string {
 		{ViewProjects, "1", "Projects"},
 		{ViewPods, "2", "Pods"},
 		{ViewDeployments, "3", "Deploys"},
+		{ViewEvents, "4", "Events"},
 	}
 
 	var parts []string
@@ -930,6 +1003,8 @@ func (m Model) renderContent() string {
 		return renderPodList(m.filteredPods(), m.cursor, m.width, ch)
 	case ViewDeployments:
 		return renderDeploymentList(m.filteredDeployments(), m.cursor, m.width, ch)
+	case ViewEvents:
+		return renderEventList(m.filteredEvents(), m.cursor, m.width, ch)
 	case ViewLogs:
 		return renderLogs(&m.logState, m.width, ch)
 	default:
@@ -946,6 +1021,8 @@ func (m Model) renderStatusBar() string {
 		helpText = podHelpKeys()
 	case ViewDeployments:
 		helpText = deploymentHelpKeys()
+	case ViewEvents:
+		helpText = eventHelpKeys()
 	case ViewLogs:
 		helpText = logHelpKeys(m.logState.previous)
 	}

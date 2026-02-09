@@ -226,29 +226,23 @@ func TestContentHeight(t *testing.T) {
 // --- Tab cycling ---
 
 func TestTabCycling(t *testing.T) {
-	// ViewProjects=0, ViewPods=1, ViewDeployments=2
-	// (view + 1) % 3 should cycle correctly
+	// ViewProjects=0, ViewPods=1, ViewDeployments=2, ViewEvents=3
+	// (view + 1) % 4 should cycle correctly
 	tests := []struct {
 		current View
 		want    View
 	}{
 		{ViewProjects, ViewPods},
 		{ViewPods, ViewDeployments},
-		{ViewDeployments, ViewProjects},
+		{ViewDeployments, ViewEvents},
+		{ViewEvents, ViewProjects},
 	}
 
 	for _, tt := range tests {
-		next := View((tt.current + 1) % 3)
+		next := View((tt.current + 1) % 4)
 		if next != tt.want {
 			t.Errorf("tab cycle from %d: got %d, want %d", tt.current, next, tt.want)
 		}
-	}
-
-	// BUG: What about cycling when in ViewLogs (3)?
-	// (3 + 1) % 3 = 1 = ViewPods - this is actually OK, but undocumented
-	logsNext := View((ViewLogs + 1) % 3)
-	if logsNext != ViewPods {
-		t.Errorf("tab cycle from ViewLogs: got %d, want ViewPods(1)", logsNext)
 	}
 }
 

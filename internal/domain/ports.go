@@ -31,6 +31,12 @@ type NamespaceRepository interface {
 	ListNamespaces(ctx context.Context) ([]NamespaceInfo, error)
 }
 
+// EventRepository provides access to event operations.
+type EventRepository interface {
+	ListEvents(ctx context.Context) ([]EventInfo, error)
+	WatchEvents(ctx context.Context) (<-chan WatchEvent, error)
+}
+
 // KubeGateway is the primary port combining all cluster operations.
 // The TUI depends on this interface, not on concrete implementations.
 type KubeGateway interface {
@@ -38,4 +44,5 @@ type KubeGateway interface {
 	PodRepository
 	DeploymentRepository
 	NamespaceRepository
+	EventRepository
 }

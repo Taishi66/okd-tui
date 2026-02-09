@@ -38,10 +38,22 @@ const (
 	EventDeleted  WatchEventType = "DELETED"
 )
 
+// EventInfo represents a Kubernetes event for display in the TUI.
+type EventInfo struct {
+	Type      string // "Normal" or "Warning"
+	Reason    string
+	Message   string
+	Object    string // e.g. "pod/web-1"
+	Namespace string
+	Age       string
+	Count     int32
+}
+
 // WatchEvent carries a single watch event for the TUI to merge into its state.
 type WatchEvent struct {
 	Type       WatchEventType
-	Resource   string // "pod", "deployment"
+	Resource   string // "pod", "deployment", "event"
 	Pod        *PodInfo
 	Deployment *DeploymentInfo
+	Event      *EventInfo
 }

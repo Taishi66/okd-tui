@@ -11,11 +11,13 @@ type MockGateway struct {
 	Pods        []PodInfo
 	Deployments []DeploymentInfo
 	Namespaces  []NamespaceInfo
+	Events      []EventInfo
 	LogContent  string
 
 	// Watch channels (inject from tests)
 	WatchPodsCh        chan WatchEvent
 	WatchDeploymentsCh chan WatchEvent
+	WatchEventsCh      chan WatchEvent
 
 	// Error injection
 	ListPodsErr         error
@@ -27,6 +29,8 @@ type MockGateway struct {
 	ReconnectErr        error
 	WatchPodsErr        error
 	WatchDeploymentsErr error
+	ListEventsErr       error
+	WatchEventsErr      error
 
 	// Call tracking
 	DeletedPod    string
@@ -92,6 +96,20 @@ func (m *MockGateway) ScaleDeployment(_ context.Context, name string, replicas i
 	m.ScaledDep = name
 	m.ScaledTo = replicas
 	return m.ScaleErr
+}
+
+func (m *MockGateway) ListEvents(_ context.Context) ([]EventInfo, error) {
+	if m.ListEventsErr != nil {
+		return nil, m.ListEventsErr
+	}
+	return m.Events, nil
+}
+
+func (m *MockGateway) WatchEvents(_ context.Context) (<-chan WatchEvent, error) {
+	if m.WatchEventsErr != nil {
+		return nil, m.WatchEventsErr
+	}
+	return m.WatchEventsCh, nil
 }
 
 func (m *MockGateway) ListNamespaces(_ context.Context) ([]NamespaceInfo, error) {
