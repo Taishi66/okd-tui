@@ -31,6 +31,14 @@ func (ys *yamlViewState) scrollUp(amount int) {
 	ys.offset = max(ys.offset-amount, 0)
 }
 
+func (ys *yamlViewState) jumpToBottom(viewHeight int) {
+	maxOffset := len(ys.lines) - viewHeight
+	if maxOffset < 0 {
+		maxOffset = 0
+	}
+	ys.offset = maxOffset
+}
+
 func renderYAMLView(ys *yamlViewState, width, viewHeight int) string {
 	if ys.content == "" {
 		return "  Pas de YAML disponible\n"
@@ -59,5 +67,5 @@ func renderYAMLView(ys *yamlViewState, width, viewHeight int) string {
 }
 
 func yamlHelpKeys() string {
-	return "pgup/pgdn:scroll  G:fin  esc:retour"
+	return "j/k:scroll  g/G:début/fin  pgup/pgdn:page  esc:retour"
 }

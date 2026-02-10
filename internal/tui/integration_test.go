@@ -2,6 +2,7 @@ package tui
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -939,6 +940,175 @@ func TestRenderTabs(t *testing.T) {
 	}
 	if !containsStr(tabs, "Deploys") {
 		t.Error("tabs should contain 'Deploys'")
+	}
+}
+
+// --- j/k scroll in Logs ---
+
+func TestJKScrollsInLogs(t *testing.T) {
+	m := newTestModel()
+	m.view = ViewLogs
+	m.logState = logState{podName: "test"}
+	// 50 lines
+	content := ""
+	for i := 0; i < 50; i++ {
+		if i > 0 {
+			content += "\n"
+		}
+		content += fmt.Sprintf("line%d", i)
+	}
+	m.logState.setContent(content)
+
+	// j scrolls down
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	um := updated.(Model)
+	if um.logState.offset != 1 {
+		t.Errorf("j in logs: offset = %d, want 1", um.logState.offset)
+	}
+
+	// k scrolls up
+	updated, _ = um.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
+	um = updated.(Model)
+	if um.logState.offset != 0 {
+		t.Errorf("k in logs: offset = %d, want 0", um.logState.offset)
+	}
+}
+
+func TestJKScrollsInYAML(t *testing.T) {
+	m := newTestModel()
+	m.view = ViewYAML
+	m.yamlState = yamlViewState{resourceName: "test", resourceType: "pod"}
+	// Need more lines than contentHeight (24) to be able to scroll
+	content := ""
+	for i := 0; i < 50; i++ {
+		if i > 0 {
+			content += "\n"
+		}
+		content += fmt.Sprintf("key%d: val%d", i, i)
+	}
+	m.yamlState.setContent(content)
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	um := updated.(Model)
+	if um.yamlState.offset != 1 {
+		t.Errorf("j in yaml: offset = %d, want 1", um.yamlState.offset)
+	}
+
+	updated, _ = um.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
+	um = updated.(Model)
+	if um.yamlState.offset != 0 {
+		t.Errorf("k in yaml: offset = %d, want 0", um.yamlState.offset)
+	}
+}
+
+// --- g/G in Logs/YAML ---
+
+func TestGJumpsToBottomInLogs(t *testing.T) {
+	m := newTestModel()
+	m.view = ViewLogs
+	m.logState = logState{podName: "test"}
+	content := ""
+	for i := 0; i < 100; i++ {
+		if i > 0 {
+			content += "\n"
+		}
+		content += "line"
+	}
+	m.logState.setContent(content)
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'G'}})
+	um := updated.(Model)
+	expected := len(um.logState.lines) - m.contentHeight()
+	if um.logState.offset != expected {
+		t.Errorf("G in logs: offset = %d, want %d", um.logState.offset, expected)
+	}
+}
+
+func TestGTopInLogs(t *testing.T) {
+	m := newTestModel()
+	m.view = ViewLogs
+	m.logState = logState{podName: "test", offset: 50}
+	m.logState.setContent("a\nb\nc")
+	m.logState.offset = 2
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
+	um := updated.(Model)
+	if um.logState.offset != 0 {
+		t.Errorf("g in logs: offset = %d, want 0", um.logState.offset)
+	}
+}
+
+func TestGJumpsToBottomInYAML(t *testing.T) {
+	m := newTestModel()
+	m.view = ViewYAML
+	m.yamlState = yamlViewState{resourceName: "test", resourceType: "pod"}
+	content := ""
+	for i := 0; i < 100; i++ {
+		if i > 0 {
+			content += "\n"
+		}
+		content += "line"
+	}
+	m.yamlState.setContent(content)
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'G'}})
+	um := updated.(Model)
+	expected := len(um.yamlState.lines) - m.contentHeight()
+	if um.yamlState.offset != expected {
+		t.Errorf("G in yaml: offset = %d, want %d", um.yamlState.offset, expected)
+	}
+}
+
+// --- Status bar line count for Logs/YAML ---
+
+func TestStatusBarLogsLineCount(t *testing.T) {
+	m := newTestModel()
+	m.view = ViewLogs
+	m.logState = logState{podName: "test"}
+	m.logState.setContent("a\nb\nc")
+
+	bar := m.renderStatusBar()
+	if !containsStr(bar, "3 lignes") {
+		t.Errorf("status bar should show '3 lignes', got %q", bar)
+	}
+	if containsStr(bar, "0 items") {
+		t.Error("status bar should NOT show '0 items' for logs")
+	}
+}
+
+func TestStatusBarYAMLLineCount(t *testing.T) {
+	m := newTestModel()
+	m.view = ViewYAML
+	m.yamlState = yamlViewState{resourceName: "test", resourceType: "pod"}
+	m.yamlState.setContent("key: val\nother: val2")
+
+	bar := m.renderStatusBar()
+	if !containsStr(bar, "2 lignes") {
+		t.Errorf("status bar should show '2 lignes', got %q", bar)
+	}
+}
+
+// --- Wrap state preserved ---
+
+func TestWrapPreservedOnPodSwitch(t *testing.T) {
+	mock := &domain.MockGateway{
+		NamespaceVal: "default",
+		LogContent:   "log line",
+	}
+	m := NewModel(mock, nil, nil)
+	m.width = 120
+	m.height = 30
+	m.view = ViewPods
+	m.pods = []domain.PodInfo{{Name: "pod-a"}, {Name: "pod-b"}}
+
+	// Open logs for first pod
+	m2, _ := m.openLogsForContainer("pod-a", "")
+	m2.logState.wrap = true // user enables wrap
+
+	// Switch to second pod - wrap should be preserved
+	m3, _ := m2.openLogsForContainer("pod-b", "")
+	if !m3.logState.wrap {
+		t.Error("wrap state should be preserved when switching pods")
 	}
 }
 

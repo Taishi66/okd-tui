@@ -121,6 +121,28 @@ func TestYAMLView_Scroll(t *testing.T) {
 	}
 }
 
+func TestYAMLView_JumpToBottom(t *testing.T) {
+	ys := &yamlViewState{}
+	lines := make([]string, 100)
+	for i := range lines {
+		lines[i] = "line"
+	}
+	ys.setContent(strings.Join(lines, "\n"))
+
+	ys.jumpToBottom(30)
+	expected := len(ys.lines) - 30
+	if ys.offset != expected {
+		t.Errorf("jumpToBottom: offset = %d, want %d", ys.offset, expected)
+	}
+
+	// Short content
+	ys.setContent("short")
+	ys.jumpToBottom(30)
+	if ys.offset != 0 {
+		t.Errorf("jumpToBottom short: offset = %d, want 0", ys.offset)
+	}
+}
+
 func TestRenderYAMLView_Header(t *testing.T) {
 	ys := &yamlViewState{
 		resourceType: "pod",

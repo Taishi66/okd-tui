@@ -373,17 +373,41 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	// Navigation
 	case key.Matches(msg, keys.Down):
-		maxIdx := m.listLen() - 1
-		if maxIdx < 0 {
-			maxIdx = 0
+		if m.view == ViewLogs {
+			m.logState.scrollDown(1, m.contentHeight())
+		} else if m.view == ViewYAML {
+			m.yamlState.scrollDown(1, m.contentHeight())
+		} else {
+			maxIdx := m.listLen() - 1
+			if maxIdx < 0 {
+				maxIdx = 0
+			}
+			m.cursor = min(m.cursor+1, maxIdx)
 		}
-		m.cursor = min(m.cursor+1, maxIdx)
 	case key.Matches(msg, keys.Up):
-		m.cursor = max(m.cursor-1, 0)
+		if m.view == ViewLogs {
+			m.logState.scrollUp(1)
+		} else if m.view == ViewYAML {
+			m.yamlState.scrollUp(1)
+		} else {
+			m.cursor = max(m.cursor-1, 0)
+		}
 	case key.Matches(msg, keys.Top):
-		m.cursor = 0
+		if m.view == ViewLogs {
+			m.logState.offset = 0
+		} else if m.view == ViewYAML {
+			m.yamlState.offset = 0
+		} else {
+			m.cursor = 0
+		}
 	case key.Matches(msg, keys.Bottom):
-		m.cursor = max(m.listLen()-1, 0)
+		if m.view == ViewLogs {
+			m.logState.jumpToBottom(m.contentHeight())
+		} else if m.view == ViewYAML {
+			m.yamlState.jumpToBottom(m.contentHeight())
+		} else {
+			m.cursor = max(m.listLen()-1, 0)
+		}
 	case key.Matches(msg, keys.PageDown):
 		if m.view == ViewLogs {
 			m.logState.scrollDown(20, m.contentHeight())
@@ -612,7 +636,7 @@ func (m Model) openLogsForContainer(podName, containerName string) (Model, tea.C
 	m.prevView = m.view
 	m.view = ViewLogs
 	m.loading = true
-	m.logState = logState{podName: podName, containerName: containerName}
+	m.logState = logState{podName: podName, containerName: containerName, wrap: m.logState.wrap}
 	return m, func() tea.Msg {
 		content, err := m.client.GetPodLogs(context.Background(), podName, containerName, 200, false)
 		if err != nil {
@@ -1259,7 +1283,16 @@ func (m Model) renderStatusBar() string {
 	if m.watching {
 		liveIndicator = liveStyle.Render(" ● LIVE")
 	}
-	left := fmt.Sprintf(" %s | %s | %d items%s", m.view.String(), nsInfo, m.listLen(), liveIndicator)
+	var itemInfo string
+	switch m.view {
+	case ViewLogs:
+		itemInfo = fmt.Sprintf("%d lignes", len(m.logState.lines))
+	case ViewYAML:
+		itemInfo = fmt.Sprintf("%d lignes", len(m.yamlState.lines))
+	default:
+		itemInfo = fmt.Sprintf("%d items", m.listLen())
+	}
+	left := fmt.Sprintf(" %s | %s | %s%s", m.view.String(), nsInfo, itemInfo, liveIndicator)
 	bar := statusBarStyle.Width(m.width).Render(left + "  " + helpText)
 	return bar
 }

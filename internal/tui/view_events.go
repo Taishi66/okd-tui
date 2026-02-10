@@ -59,5 +59,5 @@ func renderEventList(events []domain.EventInfo, cursor, width, maxVisible int) s
 }
 
 func eventHelpKeys() string {
-	return "j/k:nav  t:tri  /:filtre  r:refresh  q:quit"
+	return "j/k:nav  g/G:début/fin  t:tri  /:filtre  r:refresh  q:quit"
 }

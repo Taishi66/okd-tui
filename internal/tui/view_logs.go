@@ -178,7 +178,7 @@ func logHelpKeys(previous, wrap bool) string {
 		wrapLabel = "w:nowrap"
 	}
 	if previous {
-		return fmt.Sprintf("pgup/pgdn:scroll  G:fin  %s  p:logs courants  esc:retour", wrapLabel)
+		return fmt.Sprintf("j/k:scroll  g/G:début/fin  pgup/pgdn:page  %s  p:logs courants  esc:retour", wrapLabel)
 	}
-	return fmt.Sprintf("pgup/pgdn:scroll  G:fin  %s  p:logs précédents  esc:retour", wrapLabel)
+	return fmt.Sprintf("j/k:scroll  g/G:début/fin  pgup/pgdn:page  %s  p:logs précédents  esc:retour", wrapLabel)
 }

@@ -44,5 +44,5 @@ func renderProjectList(namespaces []domain.NamespaceInfo, cursor, width, maxVisi
 }
 
 func projectHelpKeys() string {
-	return "j/k:nav  enter:sélectionner  /:filtre  r:refresh  q:quit"
+	return "j/k:nav  g/G:début/fin  enter:sélectionner  /:filtre  r:refresh  q:quit"
 }
