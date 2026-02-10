@@ -1,6 +1,11 @@
 package tui
 
-import "testing"
+import (
+	"strings"
+	"testing"
+
+	"github.com/charmbracelet/lipgloss"
+)
 
 func TestLogState_SetContent(t *testing.T) {
 	ls := logState{podName: "my-pod"}
@@ -120,5 +125,133 @@ func TestRenderLogs_LineTruncation(t *testing.T) {
 	// Each rendered line should be <= width
 	if len(output) == 0 {
 		t.Error("renderLogs produced empty output")
+	}
+}
+
+// --- colorizeLine tests ---
+
+func TestColorizeLine_EmptyLine(t *testing.T) {
+	result := colorizeLine("")
+	if result != "" {
+		t.Errorf("expected empty string, got %q", result)
+	}
+}
+
+func TestColorizeLine_PlainText(t *testing.T) {
+	line := "just some plain text without patterns"
+	result := colorizeLine(line)
+	if result != line {
+		t.Errorf("plain text should be unchanged, got %q", result)
+	}
+}
+
+func TestColorizeLine_HTTPStatus_2xx(t *testing.T) {
+	result := colorizeLine("Outcome: Success(200 OK)")
+	green := lipgloss.NewStyle().Foreground(colorSuccess).Render("200")
+	if !strings.Contains(result, green) {
+		t.Errorf("200 should be green, got %q", result)
+	}
+}
+
+func TestColorizeLine_HTTPStatus_3xx(t *testing.T) {
+	result := colorizeLine("301 Moved Permanently")
+	blue := lipgloss.NewStyle().Foreground(colorPrimary).Render("301")
+	if !strings.Contains(result, blue) {
+		t.Errorf("301 should be blue, got %q", result)
+	}
+}
+
+func TestColorizeLine_HTTPStatus_4xx(t *testing.T) {
+	result := colorizeLine("404 Not Found")
+	yellow := lipgloss.NewStyle().Foreground(colorWarning).Render("404")
+	if !strings.Contains(result, yellow) {
+		t.Errorf("404 should be yellow, got %q", result)
+	}
+}
+
+func TestColorizeLine_HTTPStatus_5xx(t *testing.T) {
+	result := colorizeLine("500 Internal Server Error")
+	red := lipgloss.NewStyle().Foreground(colorError).Render("500")
+	if !strings.Contains(result, red) {
+		t.Errorf("500 should be red, got %q", result)
+	}
+}
+
+func TestColorizeLine_LogLevel_INFO(t *testing.T) {
+	result := colorizeLine("INFO some message")
+	blue := lipgloss.NewStyle().Foreground(colorPrimary).Bold(true).Render("INFO")
+	if !strings.Contains(result, blue) {
+		t.Errorf("INFO should be blue bold, got %q", result)
+	}
+}
+
+func TestColorizeLine_LogLevel_ERROR(t *testing.T) {
+	result := colorizeLine("ERROR something failed")
+	red := lipgloss.NewStyle().Foreground(colorError).Bold(true).Render("ERROR")
+	if !strings.Contains(result, red) {
+		t.Errorf("ERROR should be red bold, got %q", result)
+	}
+}
+
+func TestColorizeLine_LogLevel_WARN(t *testing.T) {
+	result := colorizeLine("WARN slow query")
+	yellow := lipgloss.NewStyle().Foreground(colorWarning).Bold(true).Render("WARN")
+	if !strings.Contains(result, yellow) {
+		t.Errorf("WARN should be yellow bold, got %q", result)
+	}
+}
+
+func TestColorizeLine_LogLevel_DEBUG(t *testing.T) {
+	result := colorizeLine("DEBUG verbose")
+	gray := lipgloss.NewStyle().Foreground(colorMuted).Render("DEBUG")
+	if !strings.Contains(result, gray) {
+		t.Errorf("DEBUG should be gray, got %q", result)
+	}
+}
+
+func TestColorizeLine_HTTPMethod_GET(t *testing.T) {
+	result := colorizeLine("GET /api/test")
+	green := lipgloss.NewStyle().Foreground(colorSuccess).Bold(true).Render("GET")
+	if !strings.Contains(result, green) {
+		t.Errorf("GET should be green bold, got %q", result)
+	}
+}
+
+func TestColorizeLine_HTTPMethod_DELETE(t *testing.T) {
+	result := colorizeLine("DELETE /api/staff/17738")
+	red := lipgloss.NewStyle().Foreground(colorError).Bold(true).Render("DELETE")
+	if !strings.Contains(result, red) {
+		t.Errorf("DELETE should be red bold, got %q", result)
+	}
+}
+
+func TestColorizeLine_HTTPMethod_POST(t *testing.T) {
+	result := colorizeLine("POST /api/data")
+	yellow := lipgloss.NewStyle().Foreground(colorWarning).Bold(true).Render("POST")
+	if !strings.Contains(result, yellow) {
+		t.Errorf("POST should be yellow bold, got %q", result)
+	}
+}
+
+func TestColorizeLine_Timestamp(t *testing.T) {
+	result := colorizeLine("2026-02-10 10:40:17.098 INFO message")
+	gray := lipgloss.NewStyle().Foreground(colorMuted).Render("2026-02-10 10:40:17.098")
+	if !strings.Contains(result, gray) {
+		t.Errorf("timestamp should be gray, got %q", result)
+	}
+}
+
+func TestColorizeLine_FullLine(t *testing.T) {
+	line := "2026-02-10 10:40:17.098 INFO Outcome: Success(200 OK)"
+	result := colorizeLine(line)
+
+	if !strings.Contains(result, lipgloss.NewStyle().Foreground(colorMuted).Render("2026-02-10 10:40:17.098")) {
+		t.Error("full line: timestamp not colorized")
+	}
+	if !strings.Contains(result, lipgloss.NewStyle().Foreground(colorPrimary).Bold(true).Render("INFO")) {
+		t.Error("full line: INFO not colorized")
+	}
+	if !strings.Contains(result, lipgloss.NewStyle().Foreground(colorSuccess).Render("200")) {
+		t.Error("full line: 200 not colorized")
 	}
 }

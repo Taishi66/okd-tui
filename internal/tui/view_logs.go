@@ -2,7 +2,18 @@ package tui
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
+
+	"github.com/charmbracelet/lipgloss"
+)
+
+// Compiled regexes for log line colorization.
+var (
+	reTimestamp  = regexp.MustCompile(`\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}[\.\d]*`)
+	reLogLevel   = regexp.MustCompile(`\b(INFO|WARN|WARNING|ERROR|FATAL|SEVERE|DEBUG|TRACE)\b`)
+	reHTTPMethod = regexp.MustCompile(`\b(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\b`)
+	reHTTPStatus = regexp.MustCompile(`\b([2-5]\d{2})\b`)
 )
 
 type logState struct {
@@ -70,11 +81,71 @@ func renderLogs(ls *logState, width, viewHeight int) string {
 			line = line[:width-2]
 		}
 		b.WriteString("  ")
-		b.WriteString(line)
+		b.WriteString(colorizeLine(line))
 		b.WriteString("\n")
 	}
 
 	return b.String()
+}
+
+func colorizeLine(line string) string {
+	if line == "" {
+		return ""
+	}
+
+	// 1. Timestamps → gray
+	line = reTimestamp.ReplaceAllStringFunc(line, func(m string) string {
+		return lipgloss.NewStyle().Foreground(colorMuted).Render(m)
+	})
+
+	// 2. Log levels → colored bold
+	line = reLogLevel.ReplaceAllStringFunc(line, func(m string) string {
+		switch m {
+		case "INFO":
+			return lipgloss.NewStyle().Foreground(colorPrimary).Bold(true).Render(m)
+		case "WARN", "WARNING":
+			return lipgloss.NewStyle().Foreground(colorWarning).Bold(true).Render(m)
+		case "ERROR", "FATAL", "SEVERE":
+			return lipgloss.NewStyle().Foreground(colorError).Bold(true).Render(m)
+		case "DEBUG", "TRACE":
+			return lipgloss.NewStyle().Foreground(colorMuted).Render(m)
+		}
+		return m
+	})
+
+	// 3. HTTP methods → colored bold
+	line = reHTTPMethod.ReplaceAllStringFunc(line, func(m string) string {
+		switch m {
+		case "GET":
+			return lipgloss.NewStyle().Foreground(colorSuccess).Bold(true).Render(m)
+		case "POST":
+			return lipgloss.NewStyle().Foreground(colorWarning).Bold(true).Render(m)
+		case "PUT", "PATCH":
+			return lipgloss.NewStyle().Foreground(colorPrimary).Bold(true).Render(m)
+		case "DELETE":
+			return lipgloss.NewStyle().Foreground(colorError).Bold(true).Render(m)
+		case "HEAD", "OPTIONS":
+			return lipgloss.NewStyle().Foreground(colorMuted).Bold(true).Render(m)
+		}
+		return m
+	})
+
+	// 4. HTTP status codes → colored by range
+	line = reHTTPStatus.ReplaceAllStringFunc(line, func(m string) string {
+		switch m[0] {
+		case '2':
+			return lipgloss.NewStyle().Foreground(colorSuccess).Render(m)
+		case '3':
+			return lipgloss.NewStyle().Foreground(colorPrimary).Render(m)
+		case '4':
+			return lipgloss.NewStyle().Foreground(colorWarning).Render(m)
+		case '5':
+			return lipgloss.NewStyle().Foreground(colorError).Render(m)
+		}
+		return m
+	})
+
+	return line
 }
 
 func logHelpKeys(previous bool) string {
