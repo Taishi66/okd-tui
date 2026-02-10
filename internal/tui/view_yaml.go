@@ -47,7 +47,12 @@ func renderYAMLView(ys *yamlViewState, width, viewHeight int) string {
 	var b strings.Builder
 
 	// Header
-	header := fmt.Sprintf("  YAML: %s/%s [%d lignes]", ys.resourceType, ys.resourceName, len(ys.lines))
+	first := ys.offset + 1
+	last := ys.offset + viewHeight
+	if last > len(ys.lines) {
+		last = len(ys.lines)
+	}
+	header := fmt.Sprintf("  YAML: %s/%s [%d-%d/%d]", ys.resourceType, ys.resourceName, first, last, len(ys.lines))
 	b.WriteString(headerStyle.Render(header))
 	b.WriteString("\n")
 

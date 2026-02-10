@@ -65,11 +65,20 @@ func renderLogs(ls *logState, width, viewHeight int) string {
 	if ls.previous {
 		mode = "previous"
 	}
+	// Visible line range
+	first := ls.offset + 1
+	last := ls.offset + viewHeight
+	if last > len(ls.lines) {
+		last = len(ls.lines)
+	}
+	total := len(ls.lines)
+	position := fmt.Sprintf("[%d-%d/%d]", first, last, total)
+
 	var logHeader string
 	if ls.containerName != "" {
-		logHeader = fmt.Sprintf("  Logs: %s/%s (%s) [%d lignes]", ls.podName, ls.containerName, mode, len(ls.lines))
+		logHeader = fmt.Sprintf("  Logs: %s/%s (%s) %s", ls.podName, ls.containerName, mode, position)
 	} else {
-		logHeader = fmt.Sprintf("  Logs: %s (%s) [%d lignes]", ls.podName, mode, len(ls.lines))
+		logHeader = fmt.Sprintf("  Logs: %s (%s) %s", ls.podName, mode, position)
 	}
 	b.WriteString(headerStyle.Render(logHeader))
 	b.WriteString("\n")
