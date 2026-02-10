@@ -6,6 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/jclamy/okd-tui/internal/cache"
 	"github.com/jclamy/okd-tui/internal/config"
 	"github.com/jclamy/okd-tui/internal/domain"
 	"github.com/jclamy/okd-tui/internal/k8s"
@@ -39,7 +40,8 @@ func main() {
 		return
 	}
 
-	m := tui.NewModel(client, factory, cfg)
+	cached := cache.NewCachedGateway(client, cfg.Cache)
+	m := tui.NewModel(cached, factory, cfg)
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)

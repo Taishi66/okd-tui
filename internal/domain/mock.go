@@ -39,11 +39,15 @@ type MockGateway struct {
 	WatchEventsErr      error
 
 	// Call tracking
-	DeletedPod      string
-	ScaledDep       string
-	ScaledTo        int32
-	ReconnectCalls  int
-	LoggedContainer string
+	DeletedPod           string
+	ScaledDep            string
+	ScaledTo             int32
+	ReconnectCalls       int
+	LoggedContainer      string
+	ListPodsCalls        int
+	ListDeploymentsCalls int
+	ListNamespacesCalls  int
+	ListEventsCalls      int
 }
 
 // Compile-time check.
@@ -74,6 +78,7 @@ func (m *MockGateway) WatchDeployments(_ context.Context) (<-chan WatchEvent, er
 }
 
 func (m *MockGateway) ListPods(_ context.Context) ([]PodInfo, error) {
+	m.ListPodsCalls++
 	if m.ListPodsErr != nil {
 		return nil, m.ListPodsErr
 	}
@@ -94,6 +99,7 @@ func (m *MockGateway) DeletePod(_ context.Context, podName string) error {
 }
 
 func (m *MockGateway) ListDeployments(_ context.Context) ([]DeploymentInfo, error) {
+	m.ListDeploymentsCalls++
 	if m.ListDeploymentsErr != nil {
 		return nil, m.ListDeploymentsErr
 	}
@@ -107,6 +113,7 @@ func (m *MockGateway) ScaleDeployment(_ context.Context, name string, replicas i
 }
 
 func (m *MockGateway) ListEvents(_ context.Context) ([]EventInfo, error) {
+	m.ListEventsCalls++
 	if m.ListEventsErr != nil {
 		return nil, m.ListEventsErr
 	}
@@ -121,6 +128,7 @@ func (m *MockGateway) WatchEvents(_ context.Context) (<-chan WatchEvent, error) 
 }
 
 func (m *MockGateway) ListNamespaces(_ context.Context) ([]NamespaceInfo, error) {
+	m.ListNamespacesCalls++
 	if m.ListNamespacesErr != nil {
 		return nil, m.ListNamespacesErr
 	}
