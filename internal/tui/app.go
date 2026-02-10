@@ -29,6 +29,7 @@ const (
 	ViewDeployments
 	ViewEvents
 	ViewLogs
+	ViewYAML
 	ViewError // startup error screen
 )
 
@@ -44,6 +45,8 @@ func (v View) String() string {
 		return "EVENTS"
 	case ViewLogs:
 		return "LOGS"
+	case ViewYAML:
+		return "YAML"
 	default:
 		return ""
 	}
@@ -56,6 +59,7 @@ type podsLoadedMsg struct{ items []domain.PodInfo }
 type deploymentsLoadedMsg struct{ items []domain.DeploymentInfo }
 type eventsLoadedMsg struct{ items []domain.EventInfo }
 type logsLoadedMsg struct{ content string }
+type yamlLoadedMsg struct{ content string }
 type actionDoneMsg struct{ message string }
 type apiErrMsg struct{ err error }
 type watchEventMsg struct{ event domain.WatchEvent }
@@ -77,6 +81,7 @@ type Model struct {
 	deployments []domain.DeploymentInfo
 	events      []domain.EventInfo
 	logState    logState
+	yamlState   yamlViewState
 
 	// UI state
 	cursor    int
@@ -227,6 +232,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.loading = false
 		return m, nil
 
+	case yamlLoadedMsg:
+		m.yamlState.setContent(msg.content)
+		m.loading = false
+		return m, nil
+
 	case actionDoneMsg:
 		m.toast = newToast(msg.message, toastSuccess)
 		m.loading = false
@@ -298,6 +308,11 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.logState = logState{}
 			return m, nil
 		}
+		if m.view == ViewYAML {
+			m.view = m.prevView
+			m.yamlState = yamlViewState{}
+			return m, nil
+		}
 		m.stopWatch()
 		return m, tea.Quit
 
@@ -305,6 +320,11 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.view == ViewLogs {
 			m.view = m.prevView
 			m.logState = logState{}
+			return m, nil
+		}
+		if m.view == ViewYAML {
+			m.view = m.prevView
+			m.yamlState = yamlViewState{}
 			return m, nil
 		}
 		m.toast = toast{}
@@ -357,12 +377,16 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, keys.PageDown):
 		if m.view == ViewLogs {
 			m.logState.scrollDown(20, m.contentHeight())
+		} else if m.view == ViewYAML {
+			m.yamlState.scrollDown(20, m.contentHeight())
 		} else {
 			m.cursor = min(m.cursor+20, max(m.listLen()-1, 0))
 		}
 	case key.Matches(msg, keys.PageUp):
 		if m.view == ViewLogs {
 			m.logState.scrollUp(20)
+		} else if m.view == ViewYAML {
+			m.yamlState.scrollUp(20)
 		} else {
 			m.cursor = max(m.cursor-20, 0)
 		}
@@ -391,6 +415,10 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, keys.Previous):
 		if m.view == ViewLogs {
 			return m.togglePreviousLogs()
+		}
+	case key.Matches(msg, keys.YAML):
+		if m.view == ViewPods || m.view == ViewDeployments {
+			return m.handleYAML()
 		}
 	case key.Matches(msg, keys.Sort):
 		if m.view == ViewPods || m.view == ViewDeployments || m.view == ViewEvents {
@@ -606,6 +634,49 @@ func (m Model) togglePreviousLogs() (tea.Model, tea.Cmd) {
 			return apiErrMsg{err}
 		}
 		return logsLoadedMsg{content}
+	}
+}
+
+func (m Model) handleYAML() (tea.Model, tea.Cmd) {
+	var resourceName, resourceType string
+	switch m.view {
+	case ViewPods:
+		items := m.filteredPods()
+		if m.cursor >= len(items) {
+			return m, nil
+		}
+		resourceName = items[m.cursor].Name
+		resourceType = "pod"
+	case ViewDeployments:
+		items := m.filteredDeployments()
+		if m.cursor >= len(items) {
+			return m, nil
+		}
+		resourceName = items[m.cursor].Name
+		resourceType = "deployment"
+	default:
+		return m, nil
+	}
+
+	m.prevView = m.view
+	m.view = ViewYAML
+	m.loading = true
+	m.yamlState = yamlViewState{resourceName: resourceName, resourceType: resourceType}
+
+	name := resourceName
+	rType := resourceType
+	return m, func() tea.Msg {
+		var content string
+		var err error
+		if rType == "pod" {
+			content, err = m.client.GetPodYAML(context.Background(), name)
+		} else {
+			content, err = m.client.GetDeploymentYAML(context.Background(), name)
+		}
+		if err != nil {
+			return apiErrMsg{err}
+		}
+		return yamlLoadedMsg{content}
 	}
 }
 
@@ -1093,6 +1164,8 @@ func (m Model) renderContent() string {
 		return renderEventList(m.filteredEvents(), m.cursor, m.width, ch)
 	case ViewLogs:
 		return renderLogs(&m.logState, m.width, ch)
+	case ViewYAML:
+		return renderYAMLView(&m.yamlState, m.width, ch)
 	default:
 		return ""
 	}
@@ -1111,6 +1184,8 @@ func (m Model) renderStatusBar() string {
 		helpText = eventHelpKeys()
 	case ViewLogs:
 		helpText = logHelpKeys(m.logState.previous)
+	case ViewYAML:
+		helpText = yamlHelpKeys()
 	}
 
 	nsInfo := ""

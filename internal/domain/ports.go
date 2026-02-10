@@ -37,6 +37,12 @@ type EventRepository interface {
 	WatchEvents(ctx context.Context) (<-chan WatchEvent, error)
 }
 
+// ResourceDetailProvider retrieves YAML representation of resources.
+type ResourceDetailProvider interface {
+	GetPodYAML(ctx context.Context, podName string) (string, error)
+	GetDeploymentYAML(ctx context.Context, name string) (string, error)
+}
+
 // KubeGateway is the primary port combining all cluster operations.
 // The TUI depends on this interface, not on concrete implementations.
 type KubeGateway interface {
@@ -45,4 +51,5 @@ type KubeGateway interface {
 	DeploymentRepository
 	NamespaceRepository
 	EventRepository
+	ResourceDetailProvider
 }

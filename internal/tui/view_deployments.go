@@ -74,5 +74,5 @@ func colorizeReady(ready string) string {
 }
 
 func deploymentHelpKeys() string {
-	return "j/k:nav  +/-:scale  s:scale set  t:tri  /:filtre  r:refresh  q:quit"
+	return "j/k:nav  +/-:scale  s:scale set  y:yaml  t:tri  /:filtre  r:refresh  q:quit"
 }

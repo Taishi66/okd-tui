@@ -19,8 +19,14 @@ type MockGateway struct {
 	WatchDeploymentsCh chan WatchEvent
 	WatchEventsCh      chan WatchEvent
 
+	// YAML content
+	PodYAML        string
+	DeploymentYAML string
+
 	// Error injection
-	ListPodsErr         error
+	GetPodYAMLErr        error
+	GetDeploymentYAMLErr error
+	ListPodsErr          error
 	ListDeploymentsErr  error
 	ListNamespacesErr   error
 	GetPodLogsErr       error
@@ -119,4 +125,18 @@ func (m *MockGateway) ListNamespaces(_ context.Context) ([]NamespaceInfo, error)
 		return nil, m.ListNamespacesErr
 	}
 	return m.Namespaces, nil
+}
+
+func (m *MockGateway) GetPodYAML(_ context.Context, _ string) (string, error) {
+	if m.GetPodYAMLErr != nil {
+		return "", m.GetPodYAMLErr
+	}
+	return m.PodYAML, nil
+}
+
+func (m *MockGateway) GetDeploymentYAML(_ context.Context, _ string) (string, error) {
+	if m.GetDeploymentYAMLErr != nil {
+		return "", m.GetDeploymentYAMLErr
+	}
+	return m.DeploymentYAML, nil
 }

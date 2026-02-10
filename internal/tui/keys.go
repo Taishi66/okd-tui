@@ -20,6 +20,7 @@ type keyMap struct {
 	Previous key.Binding
 	Copy     key.Binding
 	Sort     key.Binding
+	YAML     key.Binding
 	Help     key.Binding
 	Tab1     key.Binding
 	Tab2     key.Binding
@@ -47,6 +48,7 @@ var keys = keyMap{
 	Previous: key.NewBinding(key.WithKeys("p"), key.WithHelp("p", "logs précédents")),
 	Copy:     key.NewBinding(key.WithKeys("c"), key.WithHelp("c", "copier nom")),
 	Sort:     key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "tri")),
+	YAML:     key.NewBinding(key.WithKeys("y"), key.WithHelp("y", "yaml")),
 	Help:     key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "aide")),
 	Tab1:     key.NewBinding(key.WithKeys("1"), key.WithHelp("1", "projects")),
 	Tab2:     key.NewBinding(key.WithKeys("2"), key.WithHelp("2", "pods")),
