@@ -1,5 +1,7 @@
 package domain
 
+import "time"
+
 // ContainerInfo describes one container inside a pod.
 type ContainerInfo struct {
 	Name  string
@@ -17,6 +19,7 @@ type PodInfo struct {
 	Age        string
 	Node       string
 	Containers []ContainerInfo
+	CreatedAt  time.Time
 }
 
 // DeploymentInfo represents a Kubernetes deployment for display in the TUI.
@@ -28,6 +31,7 @@ type DeploymentInfo struct {
 	Available int32
 	Age       string
 	Image     string
+	CreatedAt time.Time
 }
 
 // NamespaceInfo represents a Kubernetes namespace for display in the TUI.
@@ -55,6 +59,7 @@ type EventInfo struct {
 	Namespace string
 	Age       string
 	Count     int32
+	CreatedAt time.Time
 }
 
 // WatchEvent carries a single watch event for the TUI to merge into its state.

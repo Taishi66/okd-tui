@@ -110,6 +110,9 @@ type Model struct {
 	watching    bool
 	watchCh     <-chan domain.WatchEvent
 
+	// Sort
+	sortState map[View]SortState
+
 	// Config
 	cfg *config.AppConfig
 }
@@ -136,6 +139,7 @@ func NewModel(client domain.KubeGateway, factory ClientFactory, cfg *config.AppC
 		filter:        fi,
 		scaleInput:    si,
 		confirm:       newConfirmState(),
+		sortState:     make(map[View]SortState),
 		cfg:           cfg,
 	}
 }
@@ -388,6 +392,10 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.view == ViewLogs {
 			return m.togglePreviousLogs()
 		}
+	case key.Matches(msg, keys.Sort):
+		if m.view == ViewPods || m.view == ViewDeployments || m.view == ViewEvents {
+			return m.cycleSort()
+		}
 	case key.Matches(msg, keys.Copy):
 		if m.view == ViewPods {
 			return m.copyPodName()
@@ -599,6 +607,25 @@ func (m Model) togglePreviousLogs() (tea.Model, tea.Cmd) {
 		}
 		return logsLoadedMsg{content}
 	}
+}
+
+func (m Model) cycleSort() (tea.Model, tea.Cmd) {
+	state := m.sortState[m.view]
+	switch m.view {
+	case ViewPods:
+		state.Column = NextPodSort(state.Column)
+	case ViewDeployments:
+		state.Column = NextDeploymentSort(state.Column)
+	case ViewEvents:
+		state.Column = NextEventSort(state.Column)
+	}
+	state.Ascending = true
+	if m.sortState == nil {
+		m.sortState = make(map[View]SortState)
+	}
+	m.sortState[m.view] = state
+	m.cursor = 0
+	return m, nil
 }
 
 func (m Model) copyPodName() (tea.Model, tea.Cmd) {
@@ -883,46 +910,49 @@ func (m Model) filteredNamespaces() []domain.NamespaceInfo {
 
 func (m Model) filteredPods() []domain.PodInfo {
 	f := m.filterText()
-	if f == "" {
-		return m.pods
-	}
 	var result []domain.PodInfo
-	for _, p := range m.pods {
-		if strings.Contains(strings.ToLower(p.Name), f) ||
-			strings.Contains(strings.ToLower(p.Status), f) {
-			result = append(result, p)
+	if f == "" {
+		result = m.pods
+	} else {
+		for _, p := range m.pods {
+			if strings.Contains(strings.ToLower(p.Name), f) ||
+				strings.Contains(strings.ToLower(p.Status), f) {
+				result = append(result, p)
+			}
 		}
 	}
-	return result
+	return SortPods(result, m.sortState[ViewPods])
 }
 
 func (m Model) filteredDeployments() []domain.DeploymentInfo {
 	f := m.filterText()
-	if f == "" {
-		return m.deployments
-	}
 	var result []domain.DeploymentInfo
-	for _, d := range m.deployments {
-		if strings.Contains(strings.ToLower(d.Name), f) {
-			result = append(result, d)
+	if f == "" {
+		result = m.deployments
+	} else {
+		for _, d := range m.deployments {
+			if strings.Contains(strings.ToLower(d.Name), f) {
+				result = append(result, d)
+			}
 		}
 	}
-	return result
+	return SortDeployments(result, m.sortState[ViewDeployments])
 }
 
 func (m Model) filteredEvents() []domain.EventInfo {
 	f := m.filterText()
-	if f == "" {
-		return m.events
-	}
 	var result []domain.EventInfo
-	for _, e := range m.events {
-		if strings.Contains(strings.ToLower(e.Reason), f) ||
-			strings.Contains(strings.ToLower(e.Message), f) {
-			result = append(result, e)
+	if f == "" {
+		result = m.events
+	} else {
+		for _, e := range m.events {
+			if strings.Contains(strings.ToLower(e.Reason), f) ||
+				strings.Contains(strings.ToLower(e.Message), f) {
+				result = append(result, e)
+			}
 		}
 	}
-	return result
+	return SortEvents(result, m.sortState[ViewEvents])
 }
 
 func (m Model) listLen() int {

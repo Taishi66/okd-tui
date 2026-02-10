@@ -112,6 +112,7 @@ func podToPodInfo(pod corev1.Pod) domain.PodInfo {
 		Age:        formatAge(pod.CreationTimestamp.Time),
 		Node:       pod.Spec.NodeName,
 		Containers: containers,
+		CreatedAt:  pod.CreationTimestamp.Time,
 	}
 }
 

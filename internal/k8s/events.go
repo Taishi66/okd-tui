@@ -69,6 +69,11 @@ func eventToEventInfo(evt corev1.Event) domain.EventInfo {
 		age = formatAge(evt.EventTime.Time)
 	}
 
+	createdAt := evt.LastTimestamp.Time
+	if createdAt.IsZero() {
+		createdAt = evt.EventTime.Time
+	}
+
 	return domain.EventInfo{
 		Type:      evt.Type,
 		Reason:    evt.Reason,
@@ -77,5 +82,6 @@ func eventToEventInfo(evt corev1.Event) domain.EventInfo {
 		Namespace: evt.Namespace,
 		Age:       age,
 		Count:     evt.Count,
+		CreatedAt: createdAt,
 	}
 }

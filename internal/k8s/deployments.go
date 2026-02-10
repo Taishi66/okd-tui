@@ -36,6 +36,7 @@ func (c *Client) ListDeployments(ctx context.Context) ([]domain.DeploymentInfo, 
 			Available: dep.Status.AvailableReplicas,
 			Age:       formatAge(dep.CreationTimestamp.Time),
 			Image:     image,
+			CreatedAt: dep.CreationTimestamp.Time,
 		})
 	}
 	return deps, nil
@@ -78,6 +79,7 @@ func (c *Client) WatchDeployments(ctx context.Context) (<-chan domain.WatchEvent
 					Available: dep.Status.AvailableReplicas,
 					Age:       formatAge(dep.CreationTimestamp.Time),
 					Image:     image,
+					CreatedAt: dep.CreationTimestamp.Time,
 				}
 				wType := domain.WatchEventType(string(event.Type))
 				select {
