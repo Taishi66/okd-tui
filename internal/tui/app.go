@@ -62,6 +62,7 @@ type logsLoadedMsg struct{ content string }
 type yamlLoadedMsg struct{ content string }
 type actionDoneMsg struct{ message string }
 type apiErrMsg struct{ err error }
+type execDoneMsg struct{ err error }
 type watchEventMsg struct{ event domain.WatchEvent }
 type watchStoppedMsg struct{ resource string }
 
@@ -105,7 +106,8 @@ type Model struct {
 	containerSelector bool
 	containerChoices  []string
 	containerCursor   int
-	containerPodName  string
+	containerPodName        string
+	containerSelectorAction string // "logs" or "exec"
 
 	// Connection state
 	disconnected bool
@@ -236,6 +238,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.yamlState.setContent(msg.content)
 		m.loading = false
 		return m, nil
+
+	case execDoneMsg:
+		if msg.err != nil {
+			m.toast = newToast(fmt.Sprintf("Exec: %v", msg.err), toastError)
+		} else {
+			m.toast = newToast("Shell terminé", toastSuccess)
+		}
+		return m, tea.Batch(scheduleToastClear(), m.loadCurrentView())
 
 	case actionDoneMsg:
 		m.toast = newToast(msg.message, toastSuccess)
@@ -412,6 +422,9 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.view == ViewDeployments {
 			return m.activateScaleInput()
 		}
+		if m.view == ViewPods {
+			return m.handleExecPod()
+		}
 	case key.Matches(msg, keys.Previous):
 		if m.view == ViewLogs {
 			return m.togglePreviousLogs()
@@ -530,6 +543,7 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 				}
 				m.containerCursor = 0
 				m.containerSelector = true
+				m.containerSelectorAction = "logs"
 				return m, nil
 			}
 			return m.openLogsForContainer(pod.Name, "")
@@ -617,6 +631,9 @@ func (m Model) handleContainerSelector(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, keys.Enter):
 		containerName := m.containerChoices[m.containerCursor]
 		m.containerSelector = false
+		if m.containerSelectorAction == "exec" {
+			return m.startExec(m.containerPodName, containerName)
+		}
 		return m.openLogsForContainer(m.containerPodName, containerName)
 	}
 	return m, nil
@@ -635,6 +652,46 @@ func (m Model) togglePreviousLogs() (tea.Model, tea.Cmd) {
 		}
 		return logsLoadedMsg{content}
 	}
+}
+
+func (m Model) handleExecPod() (tea.Model, tea.Cmd) {
+	items := m.filteredPods()
+	if m.cursor >= len(items) {
+		return m, nil
+	}
+	pod := items[m.cursor]
+
+	// Check readonly namespace
+	if config.IsReadonlyNamespace(m.client.GetNamespace(), m.cfg.ReadonlyNamespaces) {
+		m.toast = newToast("Namespace en lecture seule — exec interdit", toastError)
+		return m, scheduleToastClear()
+	}
+
+	if len(pod.Containers) > 1 {
+		m.containerPodName = pod.Name
+		m.containerChoices = make([]string, len(pod.Containers))
+		for i, c := range pod.Containers {
+			m.containerChoices[i] = c.Name
+		}
+		m.containerCursor = 0
+		m.containerSelector = true
+		m.containerSelectorAction = "exec"
+		return m, nil
+	}
+	return m.startExec(pod.Name, "")
+}
+
+func (m Model) startExec(podName, containerName string) (Model, tea.Cmd) {
+	shell := m.cfg.Exec.Shell
+	ns := m.client.GetNamespace()
+	cmd, err := m.client.BuildExecCmd(ns, podName, containerName, shell)
+	if err != nil {
+		m.toast = newToast(fmt.Sprintf("Exec: %v", err), toastError)
+		return m, scheduleToastClear()
+	}
+	return m, tea.ExecProcess(cmd, func(err error) tea.Msg {
+		return execDoneMsg{err: err}
+	})
 }
 
 func (m Model) handleYAML() (tea.Model, tea.Cmd) {

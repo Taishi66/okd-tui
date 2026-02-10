@@ -1,6 +1,9 @@
 package domain
 
-import "context"
+import (
+	"context"
+	"os/exec"
+)
 
 // ClusterInfo provides metadata about the current cluster connection.
 type ClusterInfo interface {
@@ -43,6 +46,11 @@ type ResourceDetailProvider interface {
 	GetDeploymentYAML(ctx context.Context, name string) (string, error)
 }
 
+// ExecProvider builds an exec.Cmd to shell into a pod.
+type ExecProvider interface {
+	BuildExecCmd(namespace, podName, containerName, shell string) (*exec.Cmd, error)
+}
+
 // KubeGateway is the primary port combining all cluster operations.
 // The TUI depends on this interface, not on concrete implementations.
 type KubeGateway interface {
@@ -52,4 +60,5 @@ type KubeGateway interface {
 	NamespaceRepository
 	EventRepository
 	ResourceDetailProvider
+	ExecProvider
 }

@@ -59,5 +59,5 @@ func renderPodList(pods []domain.PodInfo, cursor, width, maxVisible int) string 
 }
 
 func podHelpKeys() string {
-	return "j/k:nav  enter:logs  d:suppr  y:yaml  t:tri  /:filtre  r:refresh  q:quit"
+	return "j/k:nav  enter:logs  s:shell  d:suppr  y:yaml  t:tri  /:filtre  r:refresh  q:quit"
 }

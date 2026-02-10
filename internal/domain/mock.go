@@ -1,6 +1,9 @@
 package domain
 
-import "context"
+import (
+	"context"
+	"os/exec"
+)
 
 // MockGateway implements KubeGateway for testing.
 type MockGateway struct {
@@ -23,6 +26,9 @@ type MockGateway struct {
 	PodYAML        string
 	DeploymentYAML string
 
+	// Exec
+	ExecCmd *exec.Cmd
+
 	// Error injection
 	GetPodYAMLErr        error
 	GetDeploymentYAMLErr error
@@ -37,6 +43,7 @@ type MockGateway struct {
 	WatchDeploymentsErr error
 	ListEventsErr       error
 	WatchEventsErr      error
+	BuildExecErr        error
 
 	// Call tracking
 	DeletedPod           string
@@ -48,6 +55,8 @@ type MockGateway struct {
 	ListDeploymentsCalls int
 	ListNamespacesCalls  int
 	ListEventsCalls      int
+	ExecPod              string
+	ExecContainer        string
 }
 
 // Compile-time check.
@@ -133,6 +142,15 @@ func (m *MockGateway) ListNamespaces(_ context.Context) ([]NamespaceInfo, error)
 		return nil, m.ListNamespacesErr
 	}
 	return m.Namespaces, nil
+}
+
+func (m *MockGateway) BuildExecCmd(_, podName, containerName, _ string) (*exec.Cmd, error) {
+	m.ExecPod = podName
+	m.ExecContainer = containerName
+	if m.BuildExecErr != nil {
+		return nil, m.BuildExecErr
+	}
+	return m.ExecCmd, nil
 }
 
 func (m *MockGateway) GetPodYAML(_ context.Context, _ string) (string, error) {

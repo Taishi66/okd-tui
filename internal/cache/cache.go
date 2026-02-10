@@ -2,6 +2,7 @@ package cache
 
 import (
 	"context"
+	"os/exec"
 	"sync"
 	"time"
 
@@ -207,4 +208,8 @@ func (c *CachedGateway) GetPodYAML(ctx context.Context, podName string) (string,
 
 func (c *CachedGateway) GetDeploymentYAML(ctx context.Context, name string) (string, error) {
 	return c.delegate.GetDeploymentYAML(ctx, name)
+}
+
+func (c *CachedGateway) BuildExecCmd(namespace, podName, containerName, shell string) (*exec.Cmd, error) {
+	return c.delegate.BuildExecCmd(namespace, podName, containerName, shell)
 }
