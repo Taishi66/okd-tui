@@ -15,7 +15,7 @@ type ClusterInfo interface {
 type PodRepository interface {
 	ListPods(ctx context.Context) ([]PodInfo, error)
 	WatchPods(ctx context.Context) (<-chan WatchEvent, error)
-	GetPodLogs(ctx context.Context, podName string, tailLines int64, previous bool) (string, error)
+	GetPodLogs(ctx context.Context, podName, containerName string, tailLines int64, previous bool) (string, error)
 	DeletePod(ctx context.Context, podName string) error
 }
 

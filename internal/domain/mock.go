@@ -33,10 +33,11 @@ type MockGateway struct {
 	WatchEventsErr      error
 
 	// Call tracking
-	DeletedPod    string
-	ScaledDep     string
-	ScaledTo      int32
-	ReconnectCalls int
+	DeletedPod      string
+	ScaledDep       string
+	ScaledTo        int32
+	ReconnectCalls  int
+	LoggedContainer string
 }
 
 // Compile-time check.
@@ -73,7 +74,8 @@ func (m *MockGateway) ListPods(_ context.Context) ([]PodInfo, error) {
 	return m.Pods, nil
 }
 
-func (m *MockGateway) GetPodLogs(_ context.Context, _ string, _ int64, _ bool) (string, error) {
+func (m *MockGateway) GetPodLogs(_ context.Context, _ string, containerName string, _ int64, _ bool) (string, error) {
+	m.LoggedContainer = containerName
 	if m.GetPodLogsErr != nil {
 		return "", m.GetPodLogsErr
 	}

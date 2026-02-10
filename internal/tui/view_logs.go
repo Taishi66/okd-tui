@@ -6,11 +6,12 @@ import (
 )
 
 type logState struct {
-	podName   string
-	content   string
-	lines     []string
-	offset    int
-	previous  bool
+	podName       string
+	containerName string
+	content       string
+	lines         []string
+	offset        int
+	previous      bool
 }
 
 func (ls *logState) setContent(content string) {
@@ -52,7 +53,12 @@ func renderLogs(ls *logState, width, viewHeight int) string {
 	if ls.previous {
 		mode = "previous"
 	}
-	logHeader := fmt.Sprintf("  Logs: %s (%s) [%d lignes]", ls.podName, mode, len(ls.lines))
+	var logHeader string
+	if ls.containerName != "" {
+		logHeader = fmt.Sprintf("  Logs: %s/%s (%s) [%d lignes]", ls.podName, ls.containerName, mode, len(ls.lines))
+	} else {
+		logHeader = fmt.Sprintf("  Logs: %s (%s) [%d lignes]", ls.podName, mode, len(ls.lines))
+	}
 	b.WriteString(headerStyle.Render(logHeader))
 	b.WriteString("\n")
 

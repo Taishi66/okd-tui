@@ -60,10 +60,13 @@ func (c *Client) WatchPods(ctx context.Context) (<-chan domain.WatchEvent, error
 	return ch, nil
 }
 
-func (c *Client) GetPodLogs(ctx context.Context, podName string, tailLines int64, previous bool) (string, error) {
+func (c *Client) GetPodLogs(ctx context.Context, podName, containerName string, tailLines int64, previous bool) (string, error) {
 	opts := &corev1.PodLogOptions{
 		TailLines: &tailLines,
 		Previous:  previous,
+	}
+	if containerName != "" {
+		opts.Container = containerName
 	}
 	result, err := c.clientset.CoreV1().Pods(c.namespace).GetLogs(podName, opts).Do(ctx).Raw()
 	if err != nil {
@@ -84,14 +87,44 @@ func podToPodInfo(pod corev1.Pod) domain.PodInfo {
 	for _, cs := range pod.Status.ContainerStatuses {
 		restarts += cs.RestartCount
 	}
+
+	// Build container info list
+	statusMap := make(map[string]corev1.ContainerStatus)
+	for _, cs := range pod.Status.ContainerStatuses {
+		statusMap[cs.Name] = cs
+	}
+	containers := make([]domain.ContainerInfo, 0, len(pod.Spec.Containers))
+	for _, c := range pod.Spec.Containers {
+		ci := domain.ContainerInfo{Name: c.Name}
+		if cs, ok := statusMap[c.Name]; ok {
+			ci.Ready = cs.Ready
+			ci.State = containerState(cs)
+		}
+		containers = append(containers, ci)
+	}
+
 	return domain.PodInfo{
-		Name:      pod.Name,
-		Namespace: pod.Namespace,
-		Status:    status,
-		Ready:     fmt.Sprintf("%d/%d", ready, total),
-		Restarts:  restarts,
-		Age:       formatAge(pod.CreationTimestamp.Time),
-		Node:      pod.Spec.NodeName,
+		Name:       pod.Name,
+		Namespace:  pod.Namespace,
+		Status:     status,
+		Ready:      fmt.Sprintf("%d/%d", ready, total),
+		Restarts:   restarts,
+		Age:        formatAge(pod.CreationTimestamp.Time),
+		Node:       pod.Spec.NodeName,
+		Containers: containers,
+	}
+}
+
+func containerState(cs corev1.ContainerStatus) string {
+	switch {
+	case cs.State.Running != nil:
+		return "running"
+	case cs.State.Waiting != nil:
+		return "waiting"
+	case cs.State.Terminated != nil:
+		return "terminated"
+	default:
+		return "unknown"
 	}
 }
 

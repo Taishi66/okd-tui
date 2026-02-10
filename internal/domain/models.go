@@ -1,14 +1,22 @@
 package domain
 
+// ContainerInfo describes one container inside a pod.
+type ContainerInfo struct {
+	Name  string
+	Ready bool
+	State string // "running", "waiting", "terminated"
+}
+
 // PodInfo represents a Kubernetes pod for display in the TUI.
 type PodInfo struct {
-	Name      string
-	Namespace string
-	Status    string
-	Ready     string
-	Restarts  int32
-	Age       string
-	Node      string
+	Name       string
+	Namespace  string
+	Status     string
+	Ready      string
+	Restarts   int32
+	Age        string
+	Node       string
+	Containers []ContainerInfo
 }
 
 // DeploymentInfo represents a Kubernetes deployment for display in the TUI.

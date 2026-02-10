@@ -96,6 +96,12 @@ type Model struct {
 	scalingDep    string
 	scaleActive   bool
 
+	// Container selector (multi-container pods)
+	containerSelector bool
+	containerChoices  []string
+	containerCursor   int
+	containerPodName  string
+
 	// Connection state
 	disconnected bool
 
@@ -263,6 +269,11 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 		return m, nil
+	}
+
+	// Container selector captures all input
+	if m.containerSelector {
+		return m.handleContainerSelector(msg)
 	}
 
 	// Scale input captures all input
@@ -473,18 +484,19 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 	case ViewPods:
 		items := m.filteredPods()
 		if m.cursor < len(items) {
-			podName := items[m.cursor].Name
-			m.prevView = m.view
-			m.view = ViewLogs
-			m.loading = true
-			m.logState = logState{podName: podName}
-			return m, func() tea.Msg {
-				content, err := m.client.GetPodLogs(context.Background(), podName, 200, false)
-				if err != nil {
-					return apiErrMsg{err}
+			pod := items[m.cursor]
+			if len(pod.Containers) > 1 {
+				// Multi-container: show selector
+				m.containerPodName = pod.Name
+				m.containerChoices = make([]string, len(pod.Containers))
+				for i, c := range pod.Containers {
+					m.containerChoices[i] = c.Name
 				}
-				return logsLoadedMsg{content}
+				m.containerCursor = 0
+				m.containerSelector = true
+				return m, nil
 			}
+			return m.openLogsForContainer(pod.Name, "")
 		}
 	}
 	return m, nil
@@ -541,13 +553,47 @@ func (m Model) activateScaleInput() (tea.Model, tea.Cmd) {
 	return m, textinput.Blink
 }
 
+func (m Model) openLogsForContainer(podName, containerName string) (Model, tea.Cmd) {
+	m.prevView = m.view
+	m.view = ViewLogs
+	m.loading = true
+	m.logState = logState{podName: podName, containerName: containerName}
+	return m, func() tea.Msg {
+		content, err := m.client.GetPodLogs(context.Background(), podName, containerName, 200, false)
+		if err != nil {
+			return apiErrMsg{err}
+		}
+		return logsLoadedMsg{content}
+	}
+}
+
+func (m Model) handleContainerSelector(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch {
+	case key.Matches(msg, keys.Escape):
+		m.containerSelector = false
+		return m, nil
+	case key.Matches(msg, keys.Down):
+		m.containerCursor = min(m.containerCursor+1, len(m.containerChoices)-1)
+		return m, nil
+	case key.Matches(msg, keys.Up):
+		m.containerCursor = max(m.containerCursor-1, 0)
+		return m, nil
+	case key.Matches(msg, keys.Enter):
+		containerName := m.containerChoices[m.containerCursor]
+		m.containerSelector = false
+		return m.openLogsForContainer(m.containerPodName, containerName)
+	}
+	return m, nil
+}
+
 func (m Model) togglePreviousLogs() (tea.Model, tea.Cmd) {
 	newPrevious := !m.logState.previous
 	podName := m.logState.podName
+	containerName := m.logState.containerName
 	m.loading = true
 	m.logState.previous = newPrevious
 	return m, func() tea.Msg {
-		content, err := m.client.GetPodLogs(context.Background(), podName, 200, newPrevious)
+		content, err := m.client.GetPodLogs(context.Background(), podName, containerName, 200, newPrevious)
 		if err != nil {
 			return apiErrMsg{err}
 		}
@@ -932,9 +978,11 @@ func (m Model) View() string {
 		b.WriteString("\n")
 	}
 
-	// Confirm dialog
+	// Confirm dialog / Container selector
 	if m.confirm.isActive() {
 		b.WriteString(m.confirm.view(m.width))
+	} else if m.containerSelector {
+		b.WriteString(renderContainerSelector(m.containerPodName, m.containerChoices, m.containerCursor))
 	} else if m.scaleActive {
 		b.WriteString(fmt.Sprintf("\n  Scale %s - Replicas: %s\n", m.scalingDep, m.scaleInput.View()))
 	} else if m.loading {
