@@ -6,6 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/jclamy/okd-tui/internal/config"
 	"github.com/jclamy/okd-tui/internal/domain"
 	"github.com/jclamy/okd-tui/internal/k8s"
 	"github.com/jclamy/okd-tui/internal/tui"
@@ -18,6 +19,8 @@ func main() {
 		fmt.Printf("okd-tui %s\n", version)
 		os.Exit(0)
 	}
+
+	cfg, _ := config.LoadConfig()
 
 	// ClientFactory wraps k8s.NewClient to return the domain interface.
 	factory := func() (domain.KubeGateway, error) {
@@ -36,7 +39,7 @@ func main() {
 		return
 	}
 
-	m := tui.NewModel(client, factory)
+	m := tui.NewModel(client, factory, cfg)
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)

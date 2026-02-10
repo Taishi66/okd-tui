@@ -37,7 +37,7 @@ func newTestModel() Model {
 		return mock, nil
 	}
 
-	m := NewModel(mock, factory)
+	m := NewModel(mock, factory, nil)
 	m.width = 120
 	m.height = 30
 	return m

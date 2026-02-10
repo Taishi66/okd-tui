@@ -103,9 +103,16 @@ type Model struct {
 	watchCancel context.CancelFunc
 	watching    bool
 	watchCh     <-chan domain.WatchEvent
+
+	// Config
+	cfg *config.AppConfig
 }
 
-func NewModel(client domain.KubeGateway, factory ClientFactory) Model {
+func NewModel(client domain.KubeGateway, factory ClientFactory, cfg *config.AppConfig) Model {
+	if cfg == nil {
+		cfg = config.DefaultConfig()
+	}
+
 	fi := textinput.New()
 	fi.Placeholder = "filtre..."
 	fi.CharLimit = 64
@@ -123,6 +130,7 @@ func NewModel(client domain.KubeGateway, factory ClientFactory) Model {
 		filter:        fi,
 		scaleInput:    si,
 		confirm:       newConfirmState(),
+		cfg:           cfg,
 	}
 }
 
@@ -420,7 +428,7 @@ func (m Model) handleScaleInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		r := int32(replicas)
 
 		if r > 10 {
-			isProd := config.IsProdNamespace(m.client.GetNamespace(), nil)
+			isProd := config.IsProdNamespace(m.client.GetNamespace(), m.cfg.ProdPatterns)
 			m.confirm.activate(
 				fmt.Sprintf("Scale %s à %d replicas", depName, r),
 				depName, m.client.GetNamespace(), isProd,
@@ -488,7 +496,7 @@ func (m Model) handleDeletePod() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	podName := items[m.cursor].Name
-	isProd := config.IsProdNamespace(m.client.GetNamespace(), nil)
+	isProd := config.IsProdNamespace(m.client.GetNamespace(), m.cfg.ProdPatterns)
 
 	m.confirm.activate("Supprimer pod", podName, m.client.GetNamespace(), isProd, func() tea.Msg {
 		err := m.client.DeletePod(context.Background(), podName)

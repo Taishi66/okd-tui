@@ -13,7 +13,7 @@ import (
 
 func TestMergePodEvent_Added(t *testing.T) {
 	mock := &domain.MockGateway{NamespaceVal: "default"}
-	m := NewModel(mock, nil)
+	m := NewModel(mock, nil, nil)
 	m.pods = []domain.PodInfo{
 		{Name: "web-1", Status: "Running"},
 	}
@@ -31,7 +31,7 @@ func TestMergePodEvent_Added(t *testing.T) {
 
 func TestMergePodEvent_Modified(t *testing.T) {
 	mock := &domain.MockGateway{NamespaceVal: "default"}
-	m := NewModel(mock, nil)
+	m := NewModel(mock, nil, nil)
 	m.pods = []domain.PodInfo{
 		{Name: "web-1", Status: "Running"},
 		{Name: "web-2", Status: "Running"},
@@ -50,7 +50,7 @@ func TestMergePodEvent_Modified(t *testing.T) {
 
 func TestMergePodEvent_Deleted(t *testing.T) {
 	mock := &domain.MockGateway{NamespaceVal: "default"}
-	m := NewModel(mock, nil)
+	m := NewModel(mock, nil, nil)
 	m.pods = []domain.PodInfo{
 		{Name: "web-1", Status: "Running"},
 		{Name: "web-2", Status: "Running"},
@@ -70,7 +70,7 @@ func TestMergePodEvent_Deleted(t *testing.T) {
 
 func TestMergePodEvent_DeletedAdjustsCursor(t *testing.T) {
 	mock := &domain.MockGateway{NamespaceVal: "default"}
-	m := NewModel(mock, nil)
+	m := NewModel(mock, nil, nil)
 	m.pods = []domain.PodInfo{
 		{Name: "web-1"},
 		{Name: "web-2"},
@@ -90,7 +90,7 @@ func TestMergePodEvent_DeletedAdjustsCursor(t *testing.T) {
 
 func TestMergePodEvent_DeletedKeepsCursorWhenNotAtEnd(t *testing.T) {
 	mock := &domain.MockGateway{NamespaceVal: "default"}
-	m := NewModel(mock, nil)
+	m := NewModel(mock, nil, nil)
 	m.pods = []domain.PodInfo{
 		{Name: "web-1"},
 		{Name: "web-2"},
@@ -110,7 +110,7 @@ func TestMergePodEvent_DeletedKeepsCursorWhenNotAtEnd(t *testing.T) {
 
 func TestMergeDeploymentEvent_Added(t *testing.T) {
 	mock := &domain.MockGateway{NamespaceVal: "default"}
-	m := NewModel(mock, nil)
+	m := NewModel(mock, nil, nil)
 	m.deployments = []domain.DeploymentInfo{
 		{Name: "api", Replicas: 2},
 	}
@@ -128,7 +128,7 @@ func TestMergeDeploymentEvent_Added(t *testing.T) {
 
 func TestMergeDeploymentEvent_Modified(t *testing.T) {
 	mock := &domain.MockGateway{NamespaceVal: "default"}
-	m := NewModel(mock, nil)
+	m := NewModel(mock, nil, nil)
 	m.deployments = []domain.DeploymentInfo{
 		{Name: "api", Replicas: 2, Available: 2},
 	}
@@ -146,7 +146,7 @@ func TestMergeDeploymentEvent_Modified(t *testing.T) {
 
 func TestMergeDeploymentEvent_Deleted(t *testing.T) {
 	mock := &domain.MockGateway{NamespaceVal: "default"}
-	m := NewModel(mock, nil)
+	m := NewModel(mock, nil, nil)
 	m.deployments = []domain.DeploymentInfo{
 		{Name: "api"},
 		{Name: "worker"},
@@ -172,7 +172,7 @@ func TestWatchEventMsg_MergesPodAndReturnsCmd(t *testing.T) {
 		NamespaceVal: "default",
 		WatchPodsCh:  watchCh,
 	}
-	m := NewModel(mock, nil)
+	m := NewModel(mock, nil, nil)
 	m.view = ViewPods
 	m.pods = []domain.PodInfo{{Name: "web-1", Status: "Running"}}
 	m.watching = true
@@ -201,7 +201,7 @@ func TestWatchEventMsg_MergesDeployment(t *testing.T) {
 		NamespaceVal:       "default",
 		WatchDeploymentsCh: make(chan domain.WatchEvent, 1),
 	}
-	m := NewModel(mock, nil)
+	m := NewModel(mock, nil, nil)
 	m.view = ViewDeployments
 	m.deployments = []domain.DeploymentInfo{{Name: "api", Replicas: 2}}
 	m.watching = true
@@ -222,7 +222,7 @@ func TestWatchStoppedMsg_Reconnects(t *testing.T) {
 		NamespaceVal: "default",
 		WatchPodsCh:  make(chan domain.WatchEvent),
 	}
-	m := NewModel(mock, nil)
+	m := NewModel(mock, nil, nil)
 	m.view = ViewPods
 	m.watching = true
 
@@ -245,7 +245,7 @@ func TestWatchStoppedMsg_NoChannelStaysOff(t *testing.T) {
 		NamespaceVal: "default",
 		// No WatchPodsCh → startWatch returns nil channel
 	}
-	m := NewModel(mock, nil)
+	m := NewModel(mock, nil, nil)
 	m.view = ViewPods
 	m.watching = true
 
@@ -268,7 +268,7 @@ func TestSwitchView_CancelsWatch(t *testing.T) {
 		WatchPodsCh:    make(chan domain.WatchEvent),
 		WatchDeploymentsCh: make(chan domain.WatchEvent),
 	}
-	m := NewModel(mock, nil)
+	m := NewModel(mock, nil, nil)
 	m.view = ViewPods
 	m.watching = true
 	m.watchCancel = func() { cancelled = true }
@@ -287,7 +287,7 @@ func TestSwitchView_CancelsWatch(t *testing.T) {
 
 func TestStatusBar_ShowsLiveIndicator(t *testing.T) {
 	mock := &domain.MockGateway{NamespaceVal: "test-ns"}
-	m := NewModel(mock, nil)
+	m := NewModel(mock, nil, nil)
 	m.view = ViewPods
 	m.width = 120
 	m.height = 30
@@ -302,7 +302,7 @@ func TestStatusBar_ShowsLiveIndicator(t *testing.T) {
 
 func TestStatusBar_NoLiveWhenNotWatching(t *testing.T) {
 	mock := &domain.MockGateway{NamespaceVal: "test-ns"}
-	m := NewModel(mock, nil)
+	m := NewModel(mock, nil, nil)
 	m.view = ViewPods
 	m.width = 120
 	m.height = 30
@@ -321,7 +321,7 @@ func TestPodsLoadedMsg_StartsWatch(t *testing.T) {
 		NamespaceVal: "default",
 		WatchPodsCh:  ch,
 	}
-	m := NewModel(mock, nil)
+	m := NewModel(mock, nil, nil)
 	m.view = ViewPods
 
 	msg := podsLoadedMsg{items: []domain.PodInfo{{Name: "web-1"}}}
@@ -345,7 +345,7 @@ func TestDeploymentsLoadedMsg_StartsWatch(t *testing.T) {
 		NamespaceVal:       "default",
 		WatchDeploymentsCh: ch,
 	}
-	m := NewModel(mock, nil)
+	m := NewModel(mock, nil, nil)
 	m.view = ViewDeployments
 
 	msg := deploymentsLoadedMsg{items: []domain.DeploymentInfo{{Name: "api"}}}

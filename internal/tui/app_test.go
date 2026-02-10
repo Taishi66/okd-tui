@@ -304,7 +304,7 @@ func TestNewModelWithMock(t *testing.T) {
 		},
 	}
 
-	m := NewModel(mock, nil)
+	m := NewModel(mock, nil, nil)
 
 	if m.client == nil {
 		t.Fatal("client should not be nil")

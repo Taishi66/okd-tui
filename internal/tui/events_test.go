@@ -35,7 +35,7 @@ func TestTab4_SwitchesToEvents(t *testing.T) {
 		Events:        []domain.EventInfo{{Type: "Warning", Reason: "BackOff"}},
 		WatchEventsCh: make(chan domain.WatchEvent),
 	}
-	m := NewModel(mock, nil)
+	m := NewModel(mock, nil, nil)
 	m.view = ViewPods
 	m.width = 120
 	m.height = 30
@@ -60,7 +60,7 @@ func TestTabNext_CyclesThrough4Views(t *testing.T) {
 	expected := []View{ViewPods, ViewDeployments, ViewEvents, ViewProjects}
 
 	for i, startView := range views {
-		m := NewModel(mock, nil)
+		m := NewModel(mock, nil, nil)
 		m.view = startView
 		m.width = 120
 		m.height = 30
@@ -82,7 +82,7 @@ func TestEventsLoadedMsg_PopulatesEvents(t *testing.T) {
 		NamespaceVal:  "default",
 		WatchEventsCh: ch,
 	}
-	m := NewModel(mock, nil)
+	m := NewModel(mock, nil, nil)
 	m.view = ViewEvents
 
 	events := []domain.EventInfo{
@@ -112,7 +112,7 @@ func TestEventsLoadedMsg_PopulatesEvents(t *testing.T) {
 
 func TestMergeEventEvent_Added(t *testing.T) {
 	mock := &domain.MockGateway{NamespaceVal: "default"}
-	m := NewModel(mock, nil)
+	m := NewModel(mock, nil, nil)
 	m.events = []domain.EventInfo{
 		{Reason: "Scheduled", Object: "Pod/web-1"},
 	}
@@ -130,7 +130,7 @@ func TestMergeEventEvent_Added(t *testing.T) {
 
 func TestMergeEventEvent_Modified(t *testing.T) {
 	mock := &domain.MockGateway{NamespaceVal: "default"}
-	m := NewModel(mock, nil)
+	m := NewModel(mock, nil, nil)
 	m.events = []domain.EventInfo{
 		{Reason: "BackOff", Object: "Pod/web-1", Count: 3},
 		{Reason: "Scheduled", Object: "Pod/web-2", Count: 1},
@@ -146,7 +146,7 @@ func TestMergeEventEvent_Modified(t *testing.T) {
 
 func TestMergeEventEvent_Deleted(t *testing.T) {
 	mock := &domain.MockGateway{NamespaceVal: "default"}
-	m := NewModel(mock, nil)
+	m := NewModel(mock, nil, nil)
 	m.events = []domain.EventInfo{
 		{Reason: "Scheduled", Object: "Pod/web-1"},
 		{Reason: "BackOff", Object: "Pod/web-2"},
@@ -173,7 +173,7 @@ func TestWatchEventMsg_MergesEvent(t *testing.T) {
 		NamespaceVal:  "default",
 		WatchEventsCh: watchCh,
 	}
-	m := NewModel(mock, nil)
+	m := NewModel(mock, nil, nil)
 	m.view = ViewEvents
 	m.events = []domain.EventInfo{{Reason: "Scheduled", Object: "Pod/web-1"}}
 	m.watching = true
@@ -197,7 +197,7 @@ func TestWatchEventMsg_MergesEvent(t *testing.T) {
 
 func TestFilteredEvents_NoFilter(t *testing.T) {
 	mock := &domain.MockGateway{NamespaceVal: "default"}
-	m := NewModel(mock, nil)
+	m := NewModel(mock, nil, nil)
 	m.events = []domain.EventInfo{
 		{Reason: "BackOff", Message: "Back-off restarting"},
 		{Reason: "Scheduled", Message: "Successfully assigned"},
@@ -211,7 +211,7 @@ func TestFilteredEvents_NoFilter(t *testing.T) {
 
 func TestFilteredEvents_ByReason(t *testing.T) {
 	mock := &domain.MockGateway{NamespaceVal: "default"}
-	m := NewModel(mock, nil)
+	m := NewModel(mock, nil, nil)
 	m.events = []domain.EventInfo{
 		{Reason: "BackOff", Message: "Back-off restarting"},
 		{Reason: "Scheduled", Message: "Successfully assigned"},
@@ -227,7 +227,7 @@ func TestFilteredEvents_ByReason(t *testing.T) {
 
 func TestFilteredEvents_ByMessage(t *testing.T) {
 	mock := &domain.MockGateway{NamespaceVal: "default"}
-	m := NewModel(mock, nil)
+	m := NewModel(mock, nil, nil)
 	m.events = []domain.EventInfo{
 		{Reason: "BackOff", Message: "Back-off restarting"},
 		{Reason: "Scheduled", Message: "Successfully assigned"},
@@ -247,7 +247,7 @@ func TestFilteredEvents_ByMessage(t *testing.T) {
 
 func TestListLen_ViewEvents(t *testing.T) {
 	mock := &domain.MockGateway{NamespaceVal: "default"}
-	m := NewModel(mock, nil)
+	m := NewModel(mock, nil, nil)
 	m.view = ViewEvents
 	m.events = []domain.EventInfo{
 		{Reason: "BackOff"},
@@ -311,7 +311,7 @@ func TestRenderEventList_Empty(t *testing.T) {
 
 func TestStatusBar_ShowsEventsView(t *testing.T) {
 	mock := &domain.MockGateway{NamespaceVal: "test-ns"}
-	m := NewModel(mock, nil)
+	m := NewModel(mock, nil, nil)
 	m.view = ViewEvents
 	m.width = 120
 	m.height = 30
@@ -325,7 +325,7 @@ func TestStatusBar_ShowsEventsView(t *testing.T) {
 
 func TestStatusBar_ShowsLiveOnEventsView(t *testing.T) {
 	mock := &domain.MockGateway{NamespaceVal: "test-ns"}
-	m := NewModel(mock, nil)
+	m := NewModel(mock, nil, nil)
 	m.view = ViewEvents
 	m.width = 120
 	m.height = 30
@@ -342,7 +342,7 @@ func TestStatusBar_ShowsLiveOnEventsView(t *testing.T) {
 
 func TestRenderTabs_IncludesEvents(t *testing.T) {
 	mock := &domain.MockGateway{NamespaceVal: "default"}
-	m := NewModel(mock, nil)
+	m := NewModel(mock, nil, nil)
 	m.view = ViewEvents
 	m.width = 120
 	m.height = 30
