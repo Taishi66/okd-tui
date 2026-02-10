@@ -851,12 +851,12 @@ func TestScheduleToastClear(t *testing.T) {
 // --- logHelpKeys ---
 
 func TestLogHelpKeys(t *testing.T) {
-	current := logHelpKeys(false)
+	current := logHelpKeys(false, false)
 	if !containsStr(current, "précédents") {
 		t.Error("current logs help should mention 'précédents'")
 	}
 
-	previous := logHelpKeys(true)
+	previous := logHelpKeys(true, false)
 	if !containsStr(previous, "courants") {
 		t.Error("previous logs help should mention 'courants'")
 	}

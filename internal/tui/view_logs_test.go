@@ -4,7 +4,10 @@ import (
 	"strings"
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/jclamy/okd-tui/internal/domain"
 )
 
 func TestLogState_SetContent(t *testing.T) {
@@ -125,6 +128,106 @@ func TestRenderLogs_LineTruncation(t *testing.T) {
 	// Each rendered line should be <= width
 	if len(output) == 0 {
 		t.Error("renderLogs produced empty output")
+	}
+}
+
+// --- wrap key integration test ---
+
+func TestWrapKey_TogglesWrap(t *testing.T) {
+	mock := &domain.MockGateway{NamespaceVal: "default"}
+	m := NewModel(mock, nil, nil)
+	m.view = ViewLogs
+	m.logState = logState{podName: "test", content: "line", lines: []string{"line"}}
+	m.width = 120
+	m.height = 30
+
+	if m.logState.wrap {
+		t.Error("wrap should be off by default")
+	}
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'w'}})
+	um := updated.(Model)
+	if !um.logState.wrap {
+		t.Error("wrap should be on after pressing w")
+	}
+
+	updated, _ = um.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'w'}})
+	um = updated.(Model)
+	if um.logState.wrap {
+		t.Error("wrap should be off after pressing w again")
+	}
+}
+
+// --- wrap/truncate tests ---
+
+func TestRenderLogs_TruncateWithEllipsis(t *testing.T) {
+	ls := logState{podName: "test"}
+	ls.setContent("abcdefghijklmnopqrstuvwxyz0123456789")
+	// width=20 → usable=18 → truncate to 17 + "…"
+	output := renderLogs(&ls, 20, 10)
+	if !strings.Contains(output, "…") {
+		t.Error("truncated line should end with …")
+	}
+}
+
+func TestRenderLogs_WrapMode(t *testing.T) {
+	ls := logState{podName: "test", wrap: true}
+	// Line of 30 chars, width=20 → usable=18 → should wrap into 2 visual lines
+	ls.setContent("123456789012345678901234567890")
+	output := renderLogs(&ls, 20, 10)
+	// Count non-header content lines: should be 2 (18 + 12)
+	lines := strings.Split(strings.TrimRight(output, "\n"), "\n")
+	// lines[0] = header, lines[1..] = content
+	contentLines := lines[1:]
+	if len(contentLines) < 2 {
+		t.Errorf("wrap mode: expected >= 2 visual lines, got %d", len(contentLines))
+	}
+}
+
+func TestRenderLogs_WrapMode_ShortLine(t *testing.T) {
+	ls := logState{podName: "test", wrap: true}
+	ls.setContent("short")
+	output := renderLogs(&ls, 80, 10)
+	if strings.Contains(output, "…") {
+		t.Error("short line in wrap mode should not have …")
+	}
+	if !strings.Contains(output, "short") {
+		t.Error("should contain the full short line")
+	}
+}
+
+func TestRenderLogs_TruncateMode_ShortLine(t *testing.T) {
+	ls := logState{podName: "test"}
+	ls.setContent("short line")
+	output := renderLogs(&ls, 80, 10)
+	if strings.Contains(output, "…") {
+		t.Error("short line should not have …")
+	}
+	if !strings.Contains(output, "short line") {
+		t.Error("should contain the full short line")
+	}
+}
+
+func TestRenderLogs_WrapRespectsViewHeight(t *testing.T) {
+	ls := logState{podName: "test", wrap: true}
+	// 1 very long line that would wrap into 5 visual lines at width 12 (usable=10)
+	ls.setContent("12345678901234567890123456789012345678901234567890")
+	output := renderLogs(&ls, 12, 3)
+	lines := strings.Split(strings.TrimRight(output, "\n"), "\n")
+	// header(1) + max 3 content lines = 4
+	if len(lines) > 4 {
+		t.Errorf("should respect viewHeight, got %d lines", len(lines))
+	}
+}
+
+func TestLogHelpKeys_WrapLabel(t *testing.T) {
+	help := logHelpKeys(false, false)
+	if !strings.Contains(help, "w:wrap") {
+		t.Errorf("should show w:wrap, got %q", help)
+	}
+	help = logHelpKeys(false, true)
+	if !strings.Contains(help, "w:nowrap") {
+		t.Errorf("should show w:nowrap when wrap is on, got %q", help)
 	}
 }
 

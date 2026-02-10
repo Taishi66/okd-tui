@@ -23,6 +23,7 @@ type logState struct {
 	lines         []string
 	offset        int
 	previous      bool
+	wrap          bool
 }
 
 func (ls *logState) setContent(content string) {
@@ -74,15 +75,38 @@ func renderLogs(ls *logState, width, viewHeight int) string {
 	b.WriteString("\n")
 
 	// Content
-	end := min(ls.offset+viewHeight, len(ls.lines))
-	for i := ls.offset; i < end; i++ {
+	usable := width - 2 // account for "  " prefix
+	if usable < 1 {
+		usable = 1
+	}
+	rendered := 0
+	for i := ls.offset; i < len(ls.lines) && rendered < viewHeight; i++ {
 		line := ls.lines[i]
-		if len(line) > width-2 {
-			line = line[:width-2]
+		if ls.wrap {
+			// Wrap: split logical line into visual lines
+			for len(line) > 0 && rendered < viewHeight {
+				chunk := line
+				if len(chunk) > usable {
+					chunk = line[:usable]
+					line = line[usable:]
+				} else {
+					line = ""
+				}
+				b.WriteString("  ")
+				b.WriteString(colorizeLine(chunk))
+				b.WriteString("\n")
+				rendered++
+			}
+		} else {
+			// Truncate: crop with … indicator
+			if len(line) > usable {
+				line = line[:usable-1] + "…"
+			}
+			b.WriteString("  ")
+			b.WriteString(colorizeLine(line))
+			b.WriteString("\n")
+			rendered++
 		}
-		b.WriteString("  ")
-		b.WriteString(colorizeLine(line))
-		b.WriteString("\n")
 	}
 
 	return b.String()
@@ -148,9 +172,13 @@ func colorizeLine(line string) string {
 	return line
 }
 
-func logHelpKeys(previous bool) string {
-	if previous {
-		return "pgup/pgdn:scroll  G:fin  p:logs courants  esc:retour"
+func logHelpKeys(previous, wrap bool) string {
+	wrapLabel := "w:wrap"
+	if wrap {
+		wrapLabel = "w:nowrap"
 	}
-	return "pgup/pgdn:scroll  G:fin  p:logs précédents  esc:retour"
+	if previous {
+		return fmt.Sprintf("pgup/pgdn:scroll  G:fin  %s  p:logs courants  esc:retour", wrapLabel)
+	}
+	return fmt.Sprintf("pgup/pgdn:scroll  G:fin  %s  p:logs précédents  esc:retour", wrapLabel)
 }

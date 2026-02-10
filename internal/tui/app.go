@@ -429,6 +429,11 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.view == ViewLogs {
 			return m.togglePreviousLogs()
 		}
+	case key.Matches(msg, keys.Wrap):
+		if m.view == ViewLogs {
+			m.logState.wrap = !m.logState.wrap
+			return m, nil
+		}
 	case key.Matches(msg, keys.YAML):
 		if m.view == ViewPods || m.view == ViewDeployments {
 			return m.handleYAML()
@@ -1240,7 +1245,7 @@ func (m Model) renderStatusBar() string {
 	case ViewEvents:
 		helpText = eventHelpKeys()
 	case ViewLogs:
-		helpText = logHelpKeys(m.logState.previous)
+		helpText = logHelpKeys(m.logState.previous, m.logState.wrap)
 	case ViewYAML:
 		helpText = yamlHelpKeys()
 	}

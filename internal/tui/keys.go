@@ -18,6 +18,7 @@ type keyMap struct {
 	ScaleDn  key.Binding
 	ScaleSet key.Binding
 	Previous key.Binding
+	Wrap     key.Binding
 	Copy     key.Binding
 	Sort     key.Binding
 	YAML     key.Binding
@@ -47,6 +48,7 @@ var keys = keyMap{
 	ScaleDn:  key.NewBinding(key.WithKeys("-"), key.WithHelp("-", "scale down")),
 	ScaleSet: key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "scale")),
 	Previous: key.NewBinding(key.WithKeys("p"), key.WithHelp("p", "logs précédents")),
+	Wrap:     key.NewBinding(key.WithKeys("w"), key.WithHelp("w", "wrap")),
 	Copy:     key.NewBinding(key.WithKeys("c"), key.WithHelp("c", "copier nom")),
 	Sort:     key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "tri")),
 	YAML:     key.NewBinding(key.WithKeys("y"), key.WithHelp("y", "yaml")),
