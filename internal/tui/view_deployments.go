@@ -6,7 +6,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/jclamy/okd-tui/internal/domain"
+	"github.com/Taishi66/okd-tui/internal/domain"
 )
 
 func renderDeploymentList(deps []domain.DeploymentInfo, cursor, width, maxVisible int) string {

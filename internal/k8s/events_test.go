@@ -10,7 +10,7 @@ import (
 	"k8s.io/apimachinery/pkg/watch"
 	k8sTesting "k8s.io/client-go/testing"
 
-	"github.com/jclamy/okd-tui/internal/domain"
+	"github.com/Taishi66/okd-tui/internal/domain"
 )
 
 func TestListEvents(t *testing.T) {

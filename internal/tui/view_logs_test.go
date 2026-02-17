@@ -7,7 +7,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/jclamy/okd-tui/internal/domain"
+	"github.com/Taishi66/okd-tui/internal/domain"
 )
 
 func TestLogState_SetContent(t *testing.T) {

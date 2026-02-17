@@ -8,7 +8,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/jclamy/okd-tui/internal/domain"
+	"github.com/Taishi66/okd-tui/internal/domain"
 )
 
 func (c *Client) ListPods(ctx context.Context) ([]domain.PodInfo, error) {

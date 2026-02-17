@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/jclamy/okd-tui/internal/domain"
+	"github.com/Taishi66/okd-tui/internal/domain"
 )
 
 func renderProjectList(namespaces []domain.NamespaceInfo, cursor, width, maxVisible int, activeNS string) string {

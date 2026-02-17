@@ -1,4 +1,4 @@
-module github.com/jclamy/okd-tui
+module github.com/Taishi66/okd-tui
 
 go 1.25.0
 

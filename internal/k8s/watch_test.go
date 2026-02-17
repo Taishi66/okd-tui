@@ -13,7 +13,7 @@ import (
 	fakeK8s "k8s.io/client-go/kubernetes/fake"
 	k8sTesting "k8s.io/client-go/testing"
 
-	"github.com/jclamy/okd-tui/internal/domain"
+	"github.com/Taishi66/okd-tui/internal/domain"
 )
 
 func newFakeClient(objects ...runtime.Object) (*Client, *fakeK8s.Clientset) {

@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/jclamy/okd-tui/internal/config"
-	"github.com/jclamy/okd-tui/internal/domain"
+	"github.com/Taishi66/okd-tui/internal/config"
+	"github.com/Taishi66/okd-tui/internal/domain"
 )
 
 type cacheEntry[T any] struct {

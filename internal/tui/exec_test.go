@@ -8,8 +8,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/jclamy/okd-tui/internal/config"
-	"github.com/jclamy/okd-tui/internal/domain"
+	"github.com/Taishi66/okd-tui/internal/config"
+	"github.com/Taishi66/okd-tui/internal/domain"
 )
 
 func TestShellKey_SingleContainer_CallsBuildExec(t *testing.T) {

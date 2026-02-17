@@ -6,11 +6,11 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/jclamy/okd-tui/internal/cache"
-	"github.com/jclamy/okd-tui/internal/config"
-	"github.com/jclamy/okd-tui/internal/domain"
-	"github.com/jclamy/okd-tui/internal/k8s"
-	"github.com/jclamy/okd-tui/internal/tui"
+	"github.com/Taishi66/okd-tui/internal/cache"
+	"github.com/Taishi66/okd-tui/internal/config"
+	"github.com/Taishi66/okd-tui/internal/domain"
+	"github.com/Taishi66/okd-tui/internal/k8s"
+	"github.com/Taishi66/okd-tui/internal/tui"
 )
 
 var version = "dev"
